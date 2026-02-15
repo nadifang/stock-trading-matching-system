@@ -15,6 +15,8 @@
         <module>Gateway</module>
         <module>Common</module>
         <module>stms-service</module>
+        <module>trade-return</module>
+        <module>trade-return</module>
     </modules>
 
     <parent>

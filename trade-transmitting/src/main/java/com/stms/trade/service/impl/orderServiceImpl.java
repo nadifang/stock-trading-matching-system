@@ -2,18 +2,26 @@ package com.stms.trade.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stms.trade.domain.dto.orderDTO;
 import com.stms.trade.domain.entity.Order;
 import com.stms.trade.mapper.orderMapper;
 import com.stms.trade.service.orderService;
 import com.stms.trade.utils.TradeRespose;
-import com.stms.trade.utils.OrderCommand;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
+import javax.annotation.Resource;
 import java.util.Set;
 
 @Service
 public class orderServiceImpl extends ServiceImpl<orderMapper, Order> implements orderService{
+
+    @Resource
+    private KafkaTemplate<String, String> kafkaTemplate;
+    @Resource
+    private ObjectMapper objectMapper;
 
     @Override
     public TradeRespose submitOrder(orderDTO order) {
@@ -27,10 +35,25 @@ public class orderServiceImpl extends ServiceImpl<orderMapper, Order> implements
 
         //3.订单入库
         if(tradeRespose.isSuccess()){
+
             save(orderCommand);
+
+            //4.使用kafka消息队列把订单数据发送到模拟撮合系统，异步处理
+            try {
+                ObjectMapper mapper = new ObjectMapper();
+
+                String json = mapper.writeValueAsString(order);
+
+                kafkaTemplate.send("trade.order.in", json);
+
+            } catch (JsonProcessingException e) {
+
+                throw new RuntimeException(e);
+            }
+
         }
 
-        //4.返回订单
+        //5.返回订单
         return tradeRespose;
     }
 
@@ -63,6 +86,7 @@ public class orderServiceImpl extends ServiceImpl<orderMapper, Order> implements
     }
 
     private Order convertToOrderCommand(orderDTO order) {
+
         String clOrderId = order.getClOrderId() != null ? new String(order.getClOrderId()) : null;
         String market = order.getMarket() != null ? new String(order.getMarket()) : null;
         String securityId = order.getSecurityId() != null ? new String(order.getSecurityId()) : null;

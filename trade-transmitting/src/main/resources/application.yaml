@@ -8,3 +8,9 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: stms_one
     password: SEnOGIyICRDI7maP
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: trade-group
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
