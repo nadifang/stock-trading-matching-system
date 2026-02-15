@@ -6,10 +6,10 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @MapperScan("com.stms.trade.mapper")
 @SpringBootApplication
-public class tadeApplication {
+public class tradeApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(tadeApplication.class, args);
+        SpringApplication.run(tradeApplication.class, args);
     }
 
 }

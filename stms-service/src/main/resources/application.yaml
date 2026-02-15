@@ -4,7 +4,7 @@ spring:
   application:
     name: stms-service
   datasource:
-    url: jdbc:mysql://mysql7.sqlpub.com:3312/stock_trading?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://mysql6.sqlpub.com:3311/stock_trading?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai
     driver-class-name: com.mysql.cj.jdbc.Driver
-    username: group_one
-    password: wmBN0PPFAXNevVVq
+    username: stms_one
+    password: SEnOGIyICRDI7maP

@@ -9,7 +9,7 @@
     <version>1.0-SNAPSHOT</version>
     <packaging>pom</packaging>
     <modules>
-        <module>trade-transmiting</module>
+        <module>trade-transmitting</module>
         <module>risk-control</module>
         <module>match-mocking</module>
         <module>Gateway</module>
