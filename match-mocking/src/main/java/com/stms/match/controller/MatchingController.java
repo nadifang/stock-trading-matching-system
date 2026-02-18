@@ -1,6 +1,6 @@
 package com.stms.match.controller;
 
-import com.stms.match.model.OrderDTO;
+import com.stms.match.domain.dto.OrderDTO;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
