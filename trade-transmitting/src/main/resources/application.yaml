@@ -4,7 +4,7 @@ spring:
   application:
     name: trade-transmitting
   datasource:
-    url: jdbc:mysql://mysql6.sqlpub.com:3311/stock_trading?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://mysql6.sqlpub.com:3311/stock_trade?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=UTC
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: stms_one
     password: SEnOGIyICRDI7maP

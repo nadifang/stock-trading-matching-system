@@ -43,7 +43,7 @@ public class ReturnMessageListener {
                 );
             }
 
-            log.info("🚀 已推送回报给用户 [{}]，订单：{}", userId, returnVO.getClOrderId());
+            log.info("已推送回报给用户 [{}]，订单：{}", userId, returnVO.getClOrderId());
 
         } catch (Exception e) {
             log.error("处理回报消息失败: {}", message, e);

@@ -10,6 +10,7 @@ public class tradeApplication {
 
     public static void main(String[] args) {
         SpringApplication.run(tradeApplication.class, args);
+        System.out.println("Server started");
     }
 
 }

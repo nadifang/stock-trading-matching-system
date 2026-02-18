@@ -17,7 +17,7 @@ public class Result<T> {
     /**
      * 订单数据成功
      */
-    public static Result ok(){
+    public static <T> Result<T> ok(){
         return new Result(true,null,null,null);
     }
 

@@ -18,13 +18,13 @@ public class tradeApplicationTests {
     @Test
     public void testtradesubmit(){
         orderDTO order = new orderDTO();
-        order.setClOrderId(new char[] {'1','2','3','4','5','6','7','8','9','8','7','6','5','4','3','2'});
-        order.setMarket(new char[] {'X','S','H','G'});
-        order.setSecurityId(new char[] {'6','0','0','0','0','3'});
-        order.setSide(new char[] {'B'});
+        order.setClOrderId("1234567898765432");
+        order.setMarket("XSHG");
+        order.setSecurityId("60003");
+        order.setSide("B");
         order.setQty(100L);
         order.setPrice(10.0);
-        order.setShareholderId(new char[] {'1','2','3','4','5','6','7','8','9','0'});
+        order.setShareholderId("1234567890");
         //订单格式化转换
         Order orderCommand = convertToOrderCommand(order);
 

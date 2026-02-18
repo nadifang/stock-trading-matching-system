@@ -1,6 +1,7 @@
 package com.stms.trade.domain.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.AllArgsConstructor;
@@ -22,6 +23,7 @@ public class Order {
     /**
      * 订单唯一编号
      */
+    @TableField("clOrder_Id")
     private String clOrderId;
 
     /**

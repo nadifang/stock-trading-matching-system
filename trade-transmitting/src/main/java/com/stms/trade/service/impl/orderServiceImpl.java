@@ -4,6 +4,8 @@ import cn.hutool.core.bean.BeanUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.stms.common.constant.OrderIllegalCodeConstant;
+import com.stms.common.constant.OrderIllegalReasonConstant;
 import com.stms.trade.domain.dto.orderDTO;
 import com.stms.trade.domain.entity.Order;
 import com.stms.trade.mapper.orderMapper;
@@ -39,17 +41,17 @@ public class orderServiceImpl extends ServiceImpl<orderMapper, Order> implements
             save(orderCommand);
 
             //4.使用kafka消息队列把订单数据发送到模拟撮合系统，异步处理
-            try {
-                ObjectMapper mapper = new ObjectMapper();
-
-                String json = mapper.writeValueAsString(order);
-
-                kafkaTemplate.send("trade.order.in", json);
-
-            } catch (JsonProcessingException e) {
-
-                throw new RuntimeException(e);
-            }
+//            try {
+//                ObjectMapper mapper = new ObjectMapper();
+//
+//                String json = mapper.writeValueAsString(order);
+//
+//                kafkaTemplate.send("trade.order.in", json);
+//
+//            } catch (JsonProcessingException e) {
+//
+//                throw new RuntimeException(e);
+//            }
 
         }
 
@@ -59,28 +61,28 @@ public class orderServiceImpl extends ServiceImpl<orderMapper, Order> implements
 
     private TradeRespose validateOrder(Order order) {
         if (order == null) {
-            return TradeRespose.fail(1001, "订单为空");
+            return TradeRespose.fail(OrderIllegalCodeConstant.ORDER_IS_NULL, OrderIllegalReasonConstant.ORDER_IS_NULL_REASON);
         }
         if (order.getClOrderId() == null || order.getClOrderId().length() != 16) {
-            return TradeRespose.fail(1002, "订单ID必须为16位");
+            return TradeRespose.fail(OrderIllegalCodeConstant.ORDER_CL_ORDER_ID_ILLEGAL, OrderIllegalReasonConstant.ORDER_CL_ORDER_ID_ILLEGAL_REASON);
         }
         if (order.getMarket() == null || !Set.of("XSHG", "XSHE", "BJSE").contains(order.getMarket())) {
-            return TradeRespose.fail(1003, "市场代码非法");
+            return TradeRespose.fail(OrderIllegalCodeConstant.MARKET_CODE_ILLEGAL, OrderIllegalReasonConstant.MARKET_CODE_ILLEGAL_REASON);
         }
         if (order.getSecurityId() == null || order.getSecurityId().length() != 6) {
-            return TradeRespose.fail(1004, "股票代码必须为6位");
+            return TradeRespose.fail(OrderIllegalCodeConstant.SECURITY_ID_ILLEGAL, OrderIllegalReasonConstant.SECURITY_ID_ILLEGAL_REASON);
         }
         if (order.getSide() == null || (!order.getSide().equals("B") && !order.getSide().equals("S"))) {
-            return TradeRespose.fail(1005, "买卖方向必须为 B 或 S");
+            return TradeRespose.fail(OrderIllegalCodeConstant.SIDE_ILLEGAL, OrderIllegalReasonConstant.SIDE_ILLEGAL_REASON);
         }
         if (order.getQty() <= 0) {
-            return TradeRespose.fail(1006, "数量必须大于0");
+            return TradeRespose.fail(OrderIllegalCodeConstant.QTY_ILLEGAL, OrderIllegalReasonConstant.QTY_ILLEGAL_REASON);
         }
         if (order.getPrice() <= 0) {
-            return TradeRespose.fail(1007, "价格必须大于0");
+            return TradeRespose.fail(OrderIllegalCodeConstant.PRICE_ILLEGAL, OrderIllegalReasonConstant.PRICE_ILLEGAL_REASON);
         }
         if (order.getShareholderId() == null || order.getShareholderId().length() != 10) {
-            return TradeRespose.fail(1008, "股东号必须为10位");
+            return TradeRespose.fail(OrderIllegalCodeConstant.SHAREHOLDER_ID_ILLEGAL, OrderIllegalReasonConstant.SHAREHOLDER_ID_ILLEGAL_REASON);
         }
         return TradeRespose.success();
     }
