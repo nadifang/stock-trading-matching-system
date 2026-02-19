@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class MatchingController {
 
     @RequestMapping("/submit")
-    public String submitOrder(@RequestBody OrderDTO order){
+    public String submitOrder(@RequestBody OrderDTO order) {
         return "";
     }
 }
