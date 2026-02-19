@@ -11,18 +11,20 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.annotation.Resource;
 
 @Slf4j
 @RestController
+@RequestMapping("/trade")
 public class TradeController {
 
     @Resource
     private orderService orderService;
 
-    @PostMapping("/trade")
+    @PostMapping("/submit")
     public Result submitOrder(@RequestBody orderDTO order) {
 
         log.info("收到订单: {}", order);

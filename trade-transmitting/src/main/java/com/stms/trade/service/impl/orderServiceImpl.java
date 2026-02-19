@@ -9,7 +9,9 @@ import com.stms.common.constant.OrderIllegalReasonConstant;
 import com.stms.trade.domain.dto.orderDTO;
 import com.stms.trade.domain.entity.Order;
 import com.stms.trade.mapper.orderMapper;
+import com.stms.trade.service.OrderEventPublisherService;
 import com.stms.trade.service.orderService;
+import com.stms.trade.task.OrderCreatedEvent;
 import com.stms.trade.utils.TradeRespose;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
@@ -24,6 +26,8 @@ public class orderServiceImpl extends ServiceImpl<orderMapper, Order> implements
     private KafkaTemplate<String, String> kafkaTemplate;
     @Resource
     private ObjectMapper objectMapper;
+    @Resource
+    private OrderEventPublisherService orderEventPublisherService;
 
     @Override
     public TradeRespose submitOrder(orderDTO order) {
@@ -40,19 +44,17 @@ public class orderServiceImpl extends ServiceImpl<orderMapper, Order> implements
 
             save(orderCommand);
 
-            //4.使用kafka消息队列把订单数据发送到模拟撮合系统，异步处理
-//            try {
-//                ObjectMapper mapper = new ObjectMapper();
-//
-//                String json = mapper.writeValueAsString(order);
-//
-//                kafkaTemplate.send("trade.order.in", json);
-//
-//            } catch (JsonProcessingException e) {
-//
-//                throw new RuntimeException(e);
-//            }
-
+            //4.使用RabbitMQ把订单数据发送到模拟风控系统，异步处理
+            OrderCreatedEvent event = new OrderCreatedEvent(
+                    orderCommand.getClOrderId(),
+                    orderCommand.getMarket(),
+                    orderCommand.getSecurityId(),
+                    orderCommand.getSide(),
+                    orderCommand.getQty(),
+                    orderCommand.getPrice(),
+                    orderCommand.getShareholderId()
+            );
+            orderEventPublisherService.publishOrderCreatedEvent(event);
         }
 
         //5.返回订单
