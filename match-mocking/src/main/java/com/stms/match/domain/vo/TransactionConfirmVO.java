@@ -10,10 +10,10 @@ public class TransactionConfirmVO {
     private String market;
     private String securityId;
     private String side;
-    private Integer qty;
+    private Long qty;
     private Double price;
     private String shareholderId;
     private String execId;
-    private Integer execQty;
+    private Long execQty;
     private Double execPrice;
 }
