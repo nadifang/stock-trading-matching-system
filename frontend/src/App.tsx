@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { api } from "./api/client";
+import type { SubmitOrderDTO, TradeReturnVO } from "./types/server";
+import { connectTradeReturnWS, disconnectTradeReturnWS } from "./services/ws";
 
 /**
  * 订单状态枚举。
@@ -74,8 +77,13 @@ interface OrderForm {
 /**
  * 生成客户端订单号。
  */
-const generateId = (): string =>
-  "CL" + Math.random().toString(36).slice(2, 11).toUpperCase();
+const generateId = (): string => {
+  const now = Date.now().toString();
+  const rand = Math.floor(Math.random() * 1e8)
+    .toString()
+    .padStart(8, "0");
+  return (now + rand).slice(-16);
+};
 
 /**
  * 判断订单是否已进入终态。
@@ -205,6 +213,8 @@ const getStatusClassName = (status: OrderStatus): string => {
 export default function App() {
   /** 订单列表状态。 */
   const [orders, setOrders] = useState<Order[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   /** 下单表单状态。 */
   const [form, setForm] = useState<OrderForm>({
@@ -215,6 +225,10 @@ export default function App() {
     price: 20.5,
     shareholderId: "A123456789",
   });
+
+  /** 当前用户 ID（用股东号作为用户维度进行订阅） */
+  const currentUserId = useMemo(() => form.shareholderId, [form.shareholderId]);
+  const wsBoundRef = useRef(false);
 
   /**
    * 向单个订单派发事件。
@@ -227,7 +241,7 @@ export default function App() {
   };
 
   /**
-   * 按时间延迟发送模拟回报。
+   * 本地模拟回报（后端未联通时可用）。
    * 支持已报 -> 部成 -> 全成，或已报 -> 全成两种路径。
    */
   const simulateBackendResponse = (order: Order): void => {
@@ -269,9 +283,70 @@ export default function App() {
   };
 
   /**
-   * 提交新订单并启动模拟回报。
+   * 处理后端回报，转换为状态机事件。
    */
-  const submitOrder = (): void => {
+  const handleTradeReturn = (ret: TradeReturnVO) => {
+    const clId = ret.clOrderId || ret.origClOrderId || "";
+    if (!clId) return;
+    setOrders((prev) => {
+      const o = prev.find((x) => x.clOrderId === clId);
+      if (!o) return prev;
+
+      // 非法/拒绝回报
+      if (ret.rejectCode || ret.rejectText) {
+        return prev.map((x) =>
+          x.clOrderId === clId ? { ...x, status: OrderStatus.Rejected } : x
+        );
+      }
+
+      // 撤单确认（假设 origClOrderId 非空且无成交即撤单）
+      if (!ret.execId && ret.origClOrderId) {
+        emitOrderEvent(clId, { type: "CANCEL_ACK" });
+        return prev;
+      }
+
+      // 成交类回报
+      const targetQty = typeof ret.execQty === "number" ? ret.execQty : 0;
+      if (targetQty <= 0) return prev;
+
+      if (targetQty < o.qty) {
+        const fillDelta = Math.max(0, targetQty - o.cumQty);
+        if (fillDelta > 0) {
+          emitOrderEvent(clId, {
+            type: "ORDER_PARTIAL_FILL",
+            fillQty: fillDelta,
+            fillPrice: ret.execPrice ?? o.execPrice ?? o.price,
+          });
+        }
+      } else {
+        emitOrderEvent(clId, {
+          type: "ORDER_FILL",
+          fillPrice: ret.execPrice ?? o.price,
+        });
+      }
+      return prev;
+    });
+  };
+
+  /**
+   * 建立 WebSocket 订阅回报。
+   */
+  useEffect(() => {
+    if (!currentUserId || wsBoundRef.current) return;
+    connectTradeReturnWS(currentUserId, handleTradeReturn);
+    wsBoundRef.current = true;
+    return () => {
+      disconnectTradeReturnWS();
+      wsBoundRef.current = false;
+    };
+  }, [currentUserId]);
+
+  /**
+   * 提交新订单，调用后端 /trade。
+   * 若后端不可用则回退到本地模拟。
+   */
+  const submitOrder = async (): Promise<void> => {
+    setErrorMsg(null);
     const newOrder: Order = {
       ...form,
       clOrderId: generateId(),
@@ -280,9 +355,37 @@ export default function App() {
       execPrice: 0,
       canceledQty: 0,
     };
-
     setOrders((prev) => [newOrder, ...prev]);
-    simulateBackendResponse(newOrder);
+
+    const payload: SubmitOrderDTO = {
+      clOrderId: newOrder.clOrderId,
+      market: newOrder.market,
+      securityId: newOrder.securityId,
+      side: newOrder.side,
+      qty: newOrder.qty,
+      price: newOrder.price,
+      shareholderId: newOrder.shareholderId,
+    };
+
+    setSubmitting(true);
+    try {
+      await api.submitOrder(payload);
+      // 已报由后端回报驱动，这里本地先 ACK 提示
+      emitOrderEvent(newOrder.clOrderId, { type: "ORDER_ACK" });
+    } catch (e: any) {
+      setErrorMsg(e?.message || "下单失败");
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.clOrderId === newOrder.clOrderId
+            ? { ...o, status: OrderStatus.Rejected }
+            : o
+        )
+      );
+      // 回退到本地模拟，便于演示
+      simulateBackendResponse(newOrder);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   /**
@@ -351,12 +454,21 @@ export default function App() {
         </div>
 
         <button
-          className="md:col-span-4 mt-2 bg-blue-600 text-white py-2 rounded font-bold hover:bg-blue-700"
+          className={`md:col-span-4 mt-2 text-white py-2 rounded font-bold ${
+            submitting ? "bg-blue-300 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"
+          }`}
           onClick={submitOrder}
+          disabled={submitting}
         >
-          提交订单
+          {submitting ? "提交中..." : "提交订单"}
         </button>
       </div>
+
+      {errorMsg && (
+        <div className="bg-red-50 text-red-700 border border-red-200 px-4 py-2 rounded mb-4">
+          {errorMsg}
+        </div>
+      )}
 
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <table className="w-full text-left">
