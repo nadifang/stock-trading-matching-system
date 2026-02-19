@@ -1,0 +1,20 @@
+server:
+  port: 8081
+spring:
+  application:
+    name: match-mocking
+  datasource:
+    url: jdbc:mysql://mysql6.sqlpub.com:3311/stock_trade?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: stms_one
+    password: SEnOGIyICRDI7maP
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: match-group
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer

@@ -2,24 +2,26 @@ package com.stms.match.domain.entity;
 
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import lombok.AllArgsConstructor;
 import lombok.Data;
+import java.math.BigDecimal;
 
 @Data
-@AllArgsConstructor
 @TableName("tb_transaction")
 public class Transaction {
-
-    @TableId("value = id, type = IdType.AUTO")
-    private Long id;
-
+    // 主键：exec_id，和数据库表的主键对应
+    @TableId("exec_id")
     private String execId;
-    private String market;
+
     private String securityId;
+
+    // 用BigDecimal对应decimal(15,4)
+    private BigDecimal execPrice;
+
     private Integer execQty;
-    private Double execPrice;
+
     private String buyOrderId;
+
     private String sellOrderId;
-    private String buyerId;
-    private String sellerId;
+
+    // 删掉了id、market、buyerId、sellerId，这些在数据库表中不存在
 }
