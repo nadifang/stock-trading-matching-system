@@ -8,7 +8,7 @@ public class OrderDTO {
     private String market;
     private String securityId;
     private String side;
-    private Integer qty;
+    private Long qty;
     private Double price;
     private String shareholderId;
 }
