@@ -1,4 +1,4 @@
-import type { Result, SubmitOrderDTO } from "../types/server";
+import type { CancelOrderDTO, Result, SubmitOrderDTO } from "../types/server";
 
 const BASE_URL =
   (typeof import.meta !== "undefined" &&
@@ -41,6 +41,12 @@ export interface SubmitOrderResp {
 export const api = {
   submitOrder(dto: SubmitOrderDTO) {
     return request<SubmitOrderResp>("/trade", {
+      method: "POST",
+      body: JSON.stringify(dto),
+    });
+  },
+  cancelOrder(dto: CancelOrderDTO) {
+    return request<void>("/trade/cancel", {
       method: "POST",
       body: JSON.stringify(dto),
     });
