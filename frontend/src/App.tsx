@@ -394,7 +394,39 @@ export default function App() {
 
     setSubmitting(true);
     try {
-      await api.submitOrder(payload);
+        const resp = await api.submitOrder(payload);  // 【修改】获取响应对象
+        // 处理后端返回的状态
+        if (resp.status) {
+            // 根据后端状态更新前端状态
+            let frontendStatus: OrderStatus = OrderStatus.Pending;  // 【修改】添加类型注解
+            switch (resp.status) {
+            case "PENDING":
+                frontendStatus = OrderStatus.Pending;
+                break;
+            case "ACKED":
+                frontendStatus = OrderStatus.Acked;
+                break;
+            case "PARTIALLY_FILLED":
+                frontendStatus = OrderStatus.PartiallyFilled;
+                break;
+            case "FILLED":
+                frontendStatus = OrderStatus.Filled;
+                break;
+            case "CANCELED":
+                frontendStatus = OrderStatus.Canceled;
+                break;
+            case "REJECTED":
+                frontendStatus = OrderStatus.Rejected;
+                break;
+            }
+            setOrders((prev) =>
+            prev.map((o) =>
+                o.clOrderId === newOrder.clOrderId
+                ? { ...o, status: frontendStatus }
+                : o
+            )
+            );
+        }
     } catch (e: unknown) {
       let msg = "下单失败";
       if (e instanceof Error) {
