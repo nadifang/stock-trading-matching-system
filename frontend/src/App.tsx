@@ -93,6 +93,99 @@ const isFinalStatus = (status: OrderStatus): boolean =>
   status === OrderStatus.Canceled ||
   status === OrderStatus.Rejected;
 
+const tradeReturnStatusMap: Record<string, OrderStatus> = {
+  PENDING: OrderStatus.Pending,
+  ACKED: OrderStatus.Acked,
+  ORDER_ACK: OrderStatus.Acked,
+  PARTIALLY_FILLED: OrderStatus.PartiallyFilled,
+  PARTIAL_FILLED: OrderStatus.PartiallyFilled,
+  ORDER_PARTIAL_FILL: OrderStatus.PartiallyFilled,
+  FILLED: OrderStatus.Filled,
+  ORDER_FILL: OrderStatus.Filled,
+  CANCELING: OrderStatus.Canceling,
+  CANCEL_REQUEST: OrderStatus.Canceling,
+  CANCELED: OrderStatus.Canceled,
+  CANCELLED: OrderStatus.Canceled,
+  CANCEL_ACK: OrderStatus.Canceled,
+  REJECTED: OrderStatus.Rejected,
+  REJECT: OrderStatus.Rejected,
+};
+
+const resolveOrderStatusFromTradeReturn = (status?: string): OrderStatus | null => {
+  if (!status) return null;
+  const key = status.trim().toUpperCase().replace(/[\s-]+/g, "_");
+  return tradeReturnStatusMap[key] ?? null;
+};
+
+const statusPriority: Partial<Record<OrderStatus, number>> = {
+  [OrderStatus.Pending]: 0,
+  [OrderStatus.Acked]: 1,
+  [OrderStatus.PartiallyFilled]: 2,
+  [OrderStatus.Filled]: 3,
+};
+
+const applyTradeReturnStatus = (
+  order: Order,
+  nextStatus: OrderStatus,
+  ret: TradeReturnVO
+): Order => {
+  if (isFinalStatus(order.status)) {
+    return order;
+  }
+
+  const newCumQty = Math.max(
+    order.cumQty,
+    ret.cumQty ?? (order.cumQty + (ret.execQty ?? 0))
+  );
+  const syncedCumQty = Math.max(0, Math.min(order.qty, newCumQty));
+
+  const currentPriority = statusPriority[order.status];
+  const nextPriority = statusPriority[nextStatus];
+  const canEvolveByPriority =
+    currentPriority === undefined ||
+    nextPriority === undefined ||
+    nextPriority >= currentPriority;
+
+  const shouldUpdateStatus =
+    canEvolveByPriority ||
+    nextStatus === OrderStatus.Canceling ||
+    nextStatus === OrderStatus.Canceled ||
+    nextStatus === OrderStatus.Rejected;
+
+  const baseOrder: Order = ret.execPrice !== undefined
+    ? { ...order, execPrice: ret.execPrice }
+    : order;
+
+  switch (nextStatus) {
+    case OrderStatus.Pending:
+    case OrderStatus.Acked:
+    case OrderStatus.Canceling:
+    case OrderStatus.Rejected:
+      return shouldUpdateStatus ? { ...baseOrder, status: nextStatus } : baseOrder;
+    case OrderStatus.PartiallyFilled:
+      return shouldUpdateStatus
+        ? { ...baseOrder, status: OrderStatus.PartiallyFilled, cumQty: syncedCumQty }
+        : { ...baseOrder, cumQty: syncedCumQty };
+    case OrderStatus.Filled:
+      return {
+        ...baseOrder,
+        status: shouldUpdateStatus ? OrderStatus.Filled : baseOrder.status,
+        cumQty: Math.max(syncedCumQty, shouldUpdateStatus ? order.qty : syncedCumQty),
+        execPrice: ret.execPrice ?? baseOrder.execPrice ?? order.price,
+        canceledQty: 0,
+      };
+    case OrderStatus.Canceled:
+      return {
+        ...baseOrder,
+        status: shouldUpdateStatus ? OrderStatus.Canceled : baseOrder.status,
+        cumQty: syncedCumQty,
+        canceledQty: Math.max(0, order.qty - syncedCumQty),
+      };
+    default:
+      return baseOrder;
+  }
+};
+
 /**
  * 根据事件驱动订单状态流转。
  *
@@ -246,45 +339,19 @@ export default function App() {
   const handleTradeReturn = useCallback((ret: TradeReturnVO) => {
     const clId = ret.clOrderId || ret.origClOrderId || "";
     if (!clId) return;
+    const mappedStatus = resolveOrderStatusFromTradeReturn(ret.status);
+    if (!mappedStatus) return;
+
     setOrders((prev) => {
-      const o = prev.find((x) => x.clOrderId === clId);
-      if (!o) return prev;
-
-      // 非法/拒绝回报
-      if (ret.rejectCode || ret.rejectText) {
-        return prev.map((x) =>
-          x.clOrderId === clId ? { ...x, status: OrderStatus.Rejected } : x
-        );
-      }
-
-      // 撤单确认（假设 origClOrderId 非空且无成交即撤单）
-      if (!ret.execId && ret.origClOrderId) {
-        emitOrderEvent(clId, { type: "CANCEL_ACK" });
-        return prev;
-      }
-
-      // 成交类回报
-      const targetQty = typeof ret.execQty === "number" ? ret.execQty : 0;
-      if (targetQty <= 0) return prev;
-
-      if (targetQty < o.qty) {
-        const fillDelta = Math.max(0, targetQty - o.cumQty);
-        if (fillDelta > 0) {
-          emitOrderEvent(clId, {
-            type: "ORDER_PARTIAL_FILL",
-            fillQty: fillDelta,
-            fillPrice: ret.execPrice ?? o.execPrice ?? o.price,
-          });
-        }
-      } else {
-        emitOrderEvent(clId, {
-          type: "ORDER_FILL",
-          fillPrice: ret.execPrice ?? o.price,
-        });
-      }
-      return prev;
+      let changed = false;
+      const next = prev.map((o) => {
+        if (o.clOrderId !== clId) return o;
+        changed = true;
+        return applyTradeReturnStatus(o, mappedStatus, ret);
+      });
+      return changed ? next : prev;
     });
-  }, [emitOrderEvent]);
+  }, []);
 
   /**
    * 建立 WebSocket 订阅回报。
