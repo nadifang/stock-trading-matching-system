@@ -56,6 +56,12 @@ public class Order {
      */
     private String shareholderId;
 
+    /**
+     * 订单状态
+     */
+    private String status;
+
+
     public Order(String clOrderId, String market, String securityId, String side, Long qty, double price, String shareholderId) {
         this.clOrderId = clOrderId;
         this.market = market;

@@ -6,6 +6,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stms.common.constant.OrderIllegalCodeConstant;
 import com.stms.common.constant.OrderIllegalReasonConstant;
+import com.stms.common.constant.OrderStatusConstant;
 import com.stms.trade.domain.dto.orderDTO;
 import com.stms.trade.domain.entity.Order;
 import com.stms.trade.mapper.orderMapper;
@@ -42,19 +43,23 @@ public class orderServiceImpl extends ServiceImpl<orderMapper, Order> implements
         //3.订单入库
         if(tradeRespose.isSuccess()){
 
+            //3.1 设置订单状态信息为待处理
+            orderCommand.setStatus(OrderStatusConstant.ORDER_STATUS_PENDING);
+
+            //3.2 入库
             save(orderCommand);
 
             //4.使用RabbitMQ把订单数据发送到模拟风控系统，异步处理
-            OrderCreatedEvent event = new OrderCreatedEvent(
-                    orderCommand.getClOrderId(),
-                    orderCommand.getMarket(),
-                    orderCommand.getSecurityId(),
-                    orderCommand.getSide(),
-                    orderCommand.getQty(),
-                    orderCommand.getPrice(),
-                    orderCommand.getShareholderId()
-            );
-            orderEventPublisherService.publishOrderCreatedEvent(event);
+//            OrderCreatedEvent event = new OrderCreatedEvent(
+//                    orderCommand.getClOrderId(),
+//                    orderCommand.getMarket(),
+//                    orderCommand.getSecurityId(),
+//                    orderCommand.getSide(),
+//                    orderCommand.getQty(),
+//                    orderCommand.getPrice(),
+//                    orderCommand.getShareholderId()
+//            );
+//            orderEventPublisherService.publishOrderCreatedEvent(event);
         }
 
         //5.返回订单
