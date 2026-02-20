@@ -5,74 +5,125 @@ import com.stms.match.domain.dto.OrderDTO;
 import com.stms.match.domain.entity.Transaction;
 import com.stms.match.mapper.TransactionMapper;
 import com.stms.match.service.MatchService;
+import com.stms.match.utils.MatchingOrder;
+import com.stms.match.utils.OrderBook;
 import org.springframework.stereotype.Service;
 
+import java.util.LinkedList;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
 @Service
 public class MatchServiceImpl extends ServiceImpl<TransactionMapper, Transaction> implements MatchService {
 
-    private final ConcurrentHashMap<String, ConcurrentLinkedQueue<OrderDTO>> buyQueues = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, ConcurrentLinkedQueue<OrderDTO>> sellQueues = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, OrderBook> orderBooks = new ConcurrentHashMap<>();
 
     @Override
     public void processOrder(OrderDTO order) {
-        String stockCode = order.getSecurityId();
-        String orderId = order.getOrderId();
-        String side = order.getSide();
+        String securityId = order.getSecurityId();
+        OrderBook book = orderBooks.computeIfAbsent(securityId, k -> new OrderBook());
+        MatchingOrder matchingOrder = new MatchingOrder(order);
 
-        buyQueues.putIfAbsent(stockCode, new ConcurrentLinkedQueue<>());
-        sellQueues.putIfAbsent(stockCode, new ConcurrentLinkedQueue<>());
-
-        if ("BUY".equalsIgnoreCase(side)) {
-            buyQueues.get(stockCode).offer(order);
-            System.out.println("✅ 买单入队：订单ID=" + orderId + "，股票=" + stockCode + "，价格=" + order.getPrice());
-        } else if ("SELL".equalsIgnoreCase(side)) {
-            sellQueues.get(stockCode).offer(order);
-            System.out.println("✅ 卖单入队：订单ID=" + orderId + "，股票=" + stockCode + "，价格=" + order.getPrice());
-        }
-
-        matchOrder(stockCode);
-    }
-
-    private void matchOrder(String stockCode) {
-        ConcurrentLinkedQueue<OrderDTO> buyQueue = buyQueues.get(stockCode);
-        ConcurrentLinkedQueue<OrderDTO> sellQueue = sellQueues.get(stockCode);
-
-        while (!buyQueue.isEmpty() && !sellQueue.isEmpty()) {
-            OrderDTO bestBuy = buyQueue.peek();
-            OrderDTO bestSell = sellQueue.peek();
-
-            if (bestBuy.getPrice().compareTo(bestSell.getPrice()) >= 0) {
-                System.out.println("🔍 撮合成功！");
-                System.out.println("   买单ID：" + bestBuy.getOrderId() + "，价格：" + bestBuy.getPrice());
-                System.out.println("   卖单ID：" + bestSell.getOrderId() + "，价格：" + bestSell.getPrice());
-                System.out.println("   成交价格：" + bestSell.getPrice() + "，成交数量：" + Math.min(bestBuy.getQty(), bestSell.getQty()));
-
-                // 可选：解开下面注释，就能把成交记录存到数据库
-                // Transaction transaction = buildTransaction(bestBuy, bestSell);
-                // baseMapper.insert(transaction);
-
-                buyQueue.poll();
-                sellQueue.poll();
-            } else {
-                System.out.println("❌ 价格不匹配，等待新订单... 买价=" + bestBuy.getPrice() + " < 卖价=" + bestSell.getPrice());
-                break;
+        synchronized (book) {
+            if ("B".equalsIgnoreCase(order.getSide())) {
+                matchOrder(book, matchingOrder, true);
+            } else if ("S".equalsIgnoreCase(order.getSide())) {
+                matchOrder(book, matchingOrder, false);
             }
         }
     }
 
-    private Transaction buildTransaction(OrderDTO buy, OrderDTO sell) {
+    private void matchOrder(OrderBook book, MatchingOrder takerOrder, boolean isBuy) {
+        TreeMap<Double, LinkedList<MatchingOrder>> makerBook = isBuy ? book.sellBook : book.buyBook;
+
+        while (takerOrder.getRemQty() > 0 && !makerBook.isEmpty()) {
+            Map.Entry<Double, LinkedList<MatchingOrder>> bestEntry = makerBook.firstEntry();
+            Double bestPrice = bestEntry.getKey();
+            LinkedList<MatchingOrder> bestOrders = bestEntry.getValue();
+
+            boolean priceMatch = isBuy ? takerOrder.getOrderDTO().getPrice() >= bestPrice : takerOrder.getOrderDTO().getPrice() <= bestPrice;
+            if (!priceMatch) {
+                break;
+            }
+
+            MatchingOrder makerOrder = bestOrders.peek();
+
+            if (makerOrder == null) {
+                makerBook.remove(bestPrice);
+                continue;
+            }
+
+            if (makerOrder.getRemQty() == 0) {
+                bestOrders.poll();
+                if (bestOrders.isEmpty()) {
+                    makerBook.remove(bestPrice);
+                }
+                continue;
+            }
+
+            executeTrade(takerOrder, makerOrder, isBuy);
+
+            if (makerOrder.getRemQty() == 0) {
+                bestOrders.poll();
+                if (bestOrders.isEmpty()) {
+                    makerBook.remove(bestPrice);
+                }
+            }
+        }
+
+        if (takerOrder.getRemQty() > 0) {
+            TreeMap<Double, LinkedList<MatchingOrder>> targetBook = isBuy ? book.buyBook : book.sellBook;
+            targetBook.computeIfAbsent(takerOrder.getOrderDTO().getPrice(), k -> new LinkedList<>()).add(takerOrder);
+        }
+    }
+
+    private void executeTrade(MatchingOrder takerOrder, MatchingOrder makerOrder, boolean takerIsBuy) {
+        Long execQty = Math.min(takerOrder.getRemQty(), makerOrder.getRemQty());
+        Double execPrice = makerOrder.getOrderDTO().getPrice();
+
+        takerOrder.setRemQty(takerOrder.getRemQty() - execQty);
+        makerOrder.setRemQty(makerOrder.getRemQty() - execQty);
+
+        MatchingOrder buyOrder = takerIsBuy ? takerOrder : makerOrder;
+        MatchingOrder sellOrder = takerIsBuy ? makerOrder : takerOrder;
+
+        Transaction transaction = buildTransaction(buyOrder, sellOrder, execQty, execPrice);
+        save(transaction);
+
+        System.out.println("撮合成功 | 股票: " + transaction.getSecurityId() +
+                " | 成交价: " + execPrice + " | 成交量: " + execQty +
+                " | 买单ID: " + transaction.getBuyOrderId() + " | 卖单ID: " + transaction.getSellOrderId());
+    }
+
+    private Transaction buildTransaction(MatchingOrder buy, MatchingOrder sell, Long execQty, Double execPrice) {
         Transaction transaction = new Transaction();
-        transaction.setExecId(System.currentTimeMillis() + "");
-        transaction.setSecurityId(buy.getSecurityId());
-        transaction.setExecPrice(sell.getPrice());
-        transaction.setExecQty(Math.min(buy.getQty(), sell.getQty()));
-        transaction.setBuyOrderId(buy.getOrderId());
-        transaction.setSellOrderId(sell.getOrderId());
-        transaction.setBuyerId(buy.getShareholderId());
-        transaction.setSellerId(sell.getShareholderId());
+        transaction.setExecId(generateTimeBasedExecId());
+        transaction.setSecurityId(buy.getOrderDTO().getSecurityId());
+        transaction.setExecPrice(execPrice);
+        transaction.setExecQty(execQty);
+        transaction.setBuyOrderId(buy.getOrderDTO().getOrderId());
+        transaction.setSellOrderId(sell.getOrderDTO().getOrderId());
+        transaction.setBuyerId(buy.getOrderDTO().getShareholderId());
+        transaction.setSellerId(sell.getOrderDTO().getShareholderId());
         return transaction;
+    }
+
+    private String generateTimeBasedExecId() {
+        // 1. 获取当前时间的毫秒数，并转为36进制（包含字母和数字，一般会生成约 8 位的字符串）
+        String timePart = Long.toString(System.currentTimeMillis(), 36).toUpperCase();
+
+        // 2. 计算还需要补齐多少位（12 - 时间部分的长度）
+        int randomLen = 12 - timePart.length();
+
+        // 3. 用随机大写字母和数字补齐剩下的位数
+        StringBuilder sb = new StringBuilder(timePart);
+        java.util.concurrent.ThreadLocalRandom random = java.util.concurrent.ThreadLocalRandom.current();
+        String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        for (int i = 0; i < randomLen; i++) {
+            sb.append(chars.charAt(random.nextInt(chars.length())));
+        }
+
+        return sb.toString();
     }
 }

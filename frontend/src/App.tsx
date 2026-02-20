@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api/client";
-import type { SubmitOrderDTO, TradeReturnVO } from "./types/server";
+import type { CancelOrderDTO, SubmitOrderDTO, TradeReturnVO } from "./types/server";
 import { connectTradeReturnWS, disconnectTradeReturnWS } from "./services/ws";
 
 /**
@@ -26,7 +26,7 @@ type OrderStatus = (typeof OrderStatus)[keyof typeof OrderStatus];
 type Side = "B" | "S";
 
 /**
- * 模拟回报事件类型。
+ * 订单回报事件类型。
  */
 type OrderEventType =
   | "ORDER_ACK"
@@ -234,58 +234,16 @@ export default function App() {
    * 向单个订单派发事件。
    * 所有状态变化统一通过状态机处理。
    */
-  const emitOrderEvent = (clOrderId: string, event: SomeEventType): void => {
+  const emitOrderEvent = useCallback((clOrderId: string, event: SomeEventType): void => {
     setOrders((prev) =>
       prev.map((o) => (o.clOrderId === clOrderId ? updateOrderStatus(o, event) : o))
     );
-  };
-
-  /**
-   * 本地模拟回报（后端未联通时可用）。
-   * 支持已报 -> 部成 -> 全成，或已报 -> 全成两种路径。
-   */
-  const simulateBackendResponse = (order: Order): void => {
-    const { clOrderId, qty, price } = order;
-
-    setTimeout(() => {
-      emitOrderEvent(clOrderId, { type: "ORDER_ACK" });
-    }, 500);
-
-    const canPartial = qty > 1;
-    const usePartialPath = canPartial && Math.random() < 0.75;
-
-    if (usePartialPath) {
-      const partialQtyRaw = Math.floor(qty * (0.2 + Math.random() * 0.5));
-      const partialQty = Math.max(1, Math.min(qty - 1, partialQtyRaw));
-
-      setTimeout(() => {
-        emitOrderEvent(clOrderId, {
-          type: "ORDER_PARTIAL_FILL",
-          fillQty: partialQty,
-          fillPrice: price,
-        });
-      }, 1500);
-
-      setTimeout(() => {
-        emitOrderEvent(clOrderId, {
-          type: "ORDER_FILL",
-          fillPrice: price,
-        });
-      }, 2800);
-    } else {
-      setTimeout(() => {
-        emitOrderEvent(clOrderId, {
-          type: "ORDER_FILL",
-          fillPrice: price,
-        });
-      }, 1800);
-    }
-  };
+  }, []);
 
   /**
    * 处理后端回报，转换为状态机事件。
    */
-  const handleTradeReturn = (ret: TradeReturnVO) => {
+  const handleTradeReturn = useCallback((ret: TradeReturnVO) => {
     const clId = ret.clOrderId || ret.origClOrderId || "";
     if (!clId) return;
     setOrders((prev) => {
@@ -326,7 +284,7 @@ export default function App() {
       }
       return prev;
     });
-  };
+  }, [emitOrderEvent]);
 
   /**
    * 建立 WebSocket 订阅回报。
@@ -339,11 +297,11 @@ export default function App() {
       disconnectTradeReturnWS();
       wsBoundRef.current = false;
     };
-  }, [currentUserId]);
+  }, [currentUserId, handleTradeReturn]);
 
   /**
    * 提交新订单，调用后端 /trade。
-   * 若后端不可用则回退到本地模拟。
+   * 订单状态由后端回报驱动。
    */
   const submitOrder = async (): Promise<void> => {
     setErrorMsg(null);
@@ -370,10 +328,14 @@ export default function App() {
     setSubmitting(true);
     try {
       await api.submitOrder(payload);
-      // 已报由后端回报驱动，这里本地先 ACK 提示
-      emitOrderEvent(newOrder.clOrderId, { type: "ORDER_ACK" });
-    } catch (e: any) {
-      setErrorMsg(e?.message || "下单失败");
+    } catch (e: unknown) {
+      let msg = "下单失败";
+      if (e instanceof Error) {
+        msg = e.message;
+      } else if (typeof e === "string") {
+        msg = e;
+      }
+      setErrorMsg(msg);
       setOrders((prev) =>
         prev.map((o) =>
           o.clOrderId === newOrder.clOrderId
@@ -381,22 +343,40 @@ export default function App() {
             : o
         )
       );
-      // 回退到本地模拟，便于演示
-      simulateBackendResponse(newOrder);
     } finally {
       setSubmitting(false);
     }
   };
 
   /**
-   * 发起撤单并延迟模拟撤单确认回报。
+   * 发起撤单请求，状态由后端回报驱动。
    */
-  const handleCancel = (origOrder: Order): void => {
+  const handleCancel = async (origOrder: Order): Promise<void> => {
+    setErrorMsg(null);
     emitOrderEvent(origOrder.clOrderId, { type: "CANCEL_REQUEST" });
 
-    setTimeout(() => {
-      emitOrderEvent(origOrder.clOrderId, { type: "CANCEL_ACK" });
-    }, 1000);
+    const payload: CancelOrderDTO = {
+      clOrderId: generateId(),
+      origClOrderId: origOrder.clOrderId,
+      market: origOrder.market,
+      securityId: origOrder.securityId,
+      side: origOrder.side,
+      qty: origOrder.qty,
+      price: origOrder.price,
+      shareholderId: origOrder.shareholderId,
+    };
+
+    try {
+      await api.cancelOrder(payload);
+    } catch (e: unknown) {
+      let msg = "撤单失败";
+      if (e instanceof Error) {
+        msg = e.message;
+      } else if (typeof e === "string") {
+        msg = e;
+      }
+      setErrorMsg(msg);
+    }
   };
 
   /**

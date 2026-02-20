@@ -31,3 +31,14 @@ export interface SubmitOrderDTO {
   shareholderId: string;
 }
 
+export interface CancelOrderDTO {
+  clOrderId: string;
+  origClOrderId: string;
+  market: string;
+  securityId: string;
+  side: "B" | "S";
+  qty: number;
+  price: number;
+  shareholderId: string;
+}
+
