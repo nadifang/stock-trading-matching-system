@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api/client";
 import type { SubmitOrderDTO, TradeReturnVO } from "./types/server";
 import { connectTradeReturnWS, disconnectTradeReturnWS } from "./services/ws";
@@ -234,11 +234,11 @@ export default function App() {
    * 向单个订单派发事件。
    * 所有状态变化统一通过状态机处理。
    */
-  const emitOrderEvent = (clOrderId: string, event: SomeEventType): void => {
+  const emitOrderEvent = useCallback((clOrderId: string, event: SomeEventType): void => {
     setOrders((prev) =>
       prev.map((o) => (o.clOrderId === clOrderId ? updateOrderStatus(o, event) : o))
     );
-  };
+  }, []);
 
   /**
    * 本地模拟回报（后端未联通时可用）。
@@ -285,7 +285,7 @@ export default function App() {
   /**
    * 处理后端回报，转换为状态机事件。
    */
-  const handleTradeReturn = (ret: TradeReturnVO) => {
+  const handleTradeReturn = useCallback((ret: TradeReturnVO) => {
     const clId = ret.clOrderId || ret.origClOrderId || "";
     if (!clId) return;
     setOrders((prev) => {
@@ -326,7 +326,7 @@ export default function App() {
       }
       return prev;
     });
-  };
+  }, [emitOrderEvent]);
 
   /**
    * 建立 WebSocket 订阅回报。
@@ -339,7 +339,7 @@ export default function App() {
       disconnectTradeReturnWS();
       wsBoundRef.current = false;
     };
-  }, [currentUserId]);
+  }, [currentUserId, handleTradeReturn]);
 
   /**
    * 提交新订单，调用后端 /trade。
@@ -372,8 +372,14 @@ export default function App() {
       await api.submitOrder(payload);
       // 已报由后端回报驱动，这里本地先 ACK 提示
       emitOrderEvent(newOrder.clOrderId, { type: "ORDER_ACK" });
-    } catch (e: any) {
-      setErrorMsg(e?.message || "下单失败");
+    } catch (e: unknown) {
+      let msg = "下单失败";
+      if (e instanceof Error) {
+        msg = e.message;
+      } else if (typeof e === "string") {
+        msg = e;
+      }
+      setErrorMsg(msg);
       setOrders((prev) =>
         prev.map((o) =>
           o.clOrderId === newOrder.clOrderId

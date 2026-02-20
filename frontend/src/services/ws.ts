@@ -1,5 +1,5 @@
 import SockJS from "sockjs-client";
-import { Client, IMessage } from "@stomp/stompjs";
+import { Client, type IMessage } from "@stomp/stompjs";
 import type { TradeReturnVO } from "../types/server";
 
 let client: Client | null = null;
