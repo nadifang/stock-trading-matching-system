@@ -24,10 +24,6 @@ import java.util.Set;
 public class orderServiceImpl extends ServiceImpl<orderMapper, Order> implements orderService{
 
     @Resource
-    private KafkaTemplate<String, String> kafkaTemplate;
-    @Resource
-    private ObjectMapper objectMapper;
-    @Resource
     private OrderEventPublisherService orderEventPublisherService;
 
     @Override

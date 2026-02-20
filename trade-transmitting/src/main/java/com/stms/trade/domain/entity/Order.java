@@ -44,6 +44,7 @@ public class Order {
     /**
      * 订单数量
      */
+    @TableField("qty")
     private Long qty;
 
     /**
@@ -60,6 +61,30 @@ public class Order {
      * 订单状态
      */
     private String status;
+
+    /**
+     * 已撤订单累计总成交数量
+     */
+    @TableField("cum_qty")
+    private Long cumQty;
+
+    /**
+     * 已撤订单已撤数量
+     */
+    @TableField("canceled_qty")
+    private Long canceledQty;
+
+    /**
+     * 剩余订单数量
+     */
+    @TableField("remaining_qty")
+    private Long remainingQty;
+
+    /**
+     * 累计成交金额
+     */
+    @TableField("traded_amount")
+    private Long tradedAmount;
 
 
     public Order(String clOrderId, String market, String securityId, String side, Long qty, double price, String shareholderId) {

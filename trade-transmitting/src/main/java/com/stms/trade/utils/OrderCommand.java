@@ -9,6 +9,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class OrderCommand {
     private String clOrderId;                           //订单唯一编号
+    private String origClOrderId;                       //(撤单)原始订单ID（如果不同）
     private String market;                              //订单交易市场
     private String securityId;                          //订单交易股票代码
     private String side;                                //订单买卖方向

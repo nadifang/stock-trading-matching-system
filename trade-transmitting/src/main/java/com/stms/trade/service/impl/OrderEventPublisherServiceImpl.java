@@ -2,6 +2,7 @@ package com.stms.trade.service.impl;
 
 import com.stms.common.constant.RabbitMQConstant;
 import com.stms.trade.service.OrderEventPublisherService;
+import com.stms.trade.task.OrderCanceledEvent;
 import com.stms.trade.task.OrderCreatedEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -18,10 +19,19 @@ public class OrderEventPublisherServiceImpl implements OrderEventPublisherServic
 
     public void publishOrderCreatedEvent(OrderCreatedEvent event) {
         rabbitTemplate.convertAndSend(
-                RabbitMQConstant.EXCHANGE_NAME,
-                RabbitMQConstant.ROUTING_KEY,
+                RabbitMQConstant.TRANSMIT_EXCHANGE_NAME,
+                RabbitMQConstant.TRANSMIT_ROUTING_KEY,
                 event
         );
         log.info("已发送订单创建事件: {}", event.getClOrderId());
+    }
+
+    public void cancelOrderEvent(OrderCanceledEvent event) {
+        rabbitTemplate.convertAndSend(
+                RabbitMQConstant.CANCEL_EXCHANGE_NAME,
+                RabbitMQConstant.CANCEL_ROUTING_KEY,
+                event
+        );
+        log.info("已发送订单撤单事件: {}", event.getClOrderId());
     }
 }

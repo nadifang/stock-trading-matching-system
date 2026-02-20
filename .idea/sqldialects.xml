@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="SqlDialectMappings">
+    <file url="file://$PROJECT_DIR$/.idea/queries/Query_10.sql" dialect="MySQL" />
+    <file url="file://$PROJECT_DIR$/.idea/queries/Query_11.sql" dialect="MySQL" />
     <file url="file://$PROJECT_DIR$/.idea/queries/Query_7.sql" dialect="MySQL" />
     <file url="file://$PROJECT_DIR$/.idea/queries/Query_8.sql" dialect="MySQL" />
     <file url="file://$PROJECT_DIR$/.idea/queries/Query_9.sql" dialect="MySQL" />
