@@ -36,6 +36,7 @@ export interface SubmitOrderResp {
   qty: number;
   price: number;
   shareholderId: string;
+  status?: string;//添加status字段
 }
 
 export const api = {
