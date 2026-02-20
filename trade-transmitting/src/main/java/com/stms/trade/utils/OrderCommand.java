@@ -15,4 +15,5 @@ public class OrderCommand {
     private Long qty;                                   //订单数量
     private double price;                               //价格
     private String shareholderId;                       //股东ID
+    private String status;                              //订单状态
 }
