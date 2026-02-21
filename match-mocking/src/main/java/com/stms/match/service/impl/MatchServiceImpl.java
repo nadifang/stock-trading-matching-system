@@ -1,23 +1,36 @@
 package com.stms.match.service.impl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.stms.match.domain.dto.CancelDTO;
 import com.stms.match.domain.dto.OrderDTO;
 import com.stms.match.domain.entity.Transaction;
 import com.stms.match.mapper.TransactionMapper;
 import com.stms.match.service.MatchService;
 import com.stms.match.utils.MatchingOrder;
 import com.stms.match.utils.OrderBook;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class MatchServiceImpl extends ServiceImpl<TransactionMapper, Transaction> implements MatchService {
 
     private final ConcurrentHashMap<String, OrderBook> orderBooks = new ConcurrentHashMap<>();
+
+    @Autowired
+    private StringRedisTemplate redisTemplate;
+
+    private static final String EARLY_CANCEL_KEY_PREFIX = "EARLY_CANCEL:";
+    private static final long CANCEL_EXPIRY_SECONDS = 5;
+
+    @Autowired
+    private TransactionAsyncServiceImpl transactionAsyncService;
 
     @Override
     public void processOrder(OrderDTO order) {
@@ -25,13 +38,42 @@ public class MatchServiceImpl extends ServiceImpl<TransactionMapper, Transaction
         OrderBook book = orderBooks.computeIfAbsent(securityId, k -> new OrderBook());
         MatchingOrder matchingOrder = new MatchingOrder(order);
 
+        boolean isCanceled = redisTemplate.delete(EARLY_CANCEL_KEY_PREFIX + order.getOrderId());
+        if (isCanceled) {
+            System.out.println("订单已被提前撤销 | 订单ID: " + order.getOrderId());
+            return;
+        }
+
         synchronized (book) {
+            book.orderIndex.put(order.getOrderId(), matchingOrder);
+
             if ("B".equalsIgnoreCase(order.getSide())) {
                 matchOrder(book, matchingOrder, true);
             } else if ("S".equalsIgnoreCase(order.getSide())) {
                 matchOrder(book, matchingOrder, false);
             }
         }
+    }
+
+    @Override
+    public boolean cancelOrder(CancelDTO cancelDTO) {
+        OrderBook book = orderBooks.get(cancelDTO.getSecurityId());
+
+        if (book == null) {
+            return earlyCancelMark(cancelDTO.getOriginalOrderId());
+        }
+
+        synchronized (book) {
+            MatchingOrder target = book.orderIndex.get(cancelDTO.getOriginalOrderId());
+            if (target != null && target.getRemQty() > 0 && !target.isCanceled()) {
+                target.setCanceled(true);
+                book.orderIndex.remove(cancelDTO.getOriginalOrderId());
+                return true;
+            } else {
+                return earlyCancelMark(cancelDTO.getOriginalOrderId());
+            }
+        }
+
     }
 
     private void matchOrder(OrderBook book, MatchingOrder takerOrder, boolean isBuy) {
@@ -54,11 +96,12 @@ public class MatchServiceImpl extends ServiceImpl<TransactionMapper, Transaction
                 continue;
             }
 
-            if (makerOrder.getRemQty() == 0) {
+            if (makerOrder.isCanceled() || makerOrder.getRemQty() == 0) {
                 bestOrders.poll();
                 if (bestOrders.isEmpty()) {
                     makerBook.remove(bestPrice);
                 }
+                book.orderIndex.remove(makerOrder.getOrderDTO().getOrderId());
                 continue;
             }
 
@@ -69,13 +112,22 @@ public class MatchServiceImpl extends ServiceImpl<TransactionMapper, Transaction
                 if (bestOrders.isEmpty()) {
                     makerBook.remove(bestPrice);
                 }
+                book.orderIndex.remove(makerOrder.getOrderDTO().getOrderId());
             }
         }
 
         if (takerOrder.getRemQty() > 0) {
             TreeMap<Double, LinkedList<MatchingOrder>> targetBook = isBuy ? book.buyBook : book.sellBook;
             targetBook.computeIfAbsent(takerOrder.getOrderDTO().getPrice(), k -> new LinkedList<>()).add(takerOrder);
+        }else{
+            book.orderIndex.remove(takerOrder.getOrderDTO().getOrderId());
         }
+    }
+
+    private boolean earlyCancelMark(String orderId) {
+        String key = EARLY_CANCEL_KEY_PREFIX + orderId;
+        redisTemplate.opsForValue().setIfAbsent(key, "1", CANCEL_EXPIRY_SECONDS, TimeUnit.SECONDS);
+        return true;
     }
 
     private void executeTrade(MatchingOrder takerOrder, MatchingOrder makerOrder, boolean takerIsBuy) {
@@ -89,7 +141,7 @@ public class MatchServiceImpl extends ServiceImpl<TransactionMapper, Transaction
         MatchingOrder sellOrder = takerIsBuy ? makerOrder : takerOrder;
 
         Transaction transaction = buildTransaction(buyOrder, sellOrder, execQty, execPrice);
-        save(transaction);
+        transactionAsyncService.saveTransactionAsync(transaction);
 
         System.out.println("撮合成功 | 股票: " + transaction.getSecurityId() +
                 " | 成交价: " + execPrice + " | 成交量: " + execQty +

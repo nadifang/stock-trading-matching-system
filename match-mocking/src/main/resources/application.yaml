@@ -12,9 +12,3 @@ spring:
       maximum-pool-size: 10
       minimum-idle: 2
       connection-timeout: 30000
-  kafka:
-    bootstrap-servers: localhost:9092
-    consumer:
-      group-id: match-group
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer

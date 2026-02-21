@@ -8,10 +8,12 @@ public class MatchingOrder {
     private final OrderDTO orderDTO;
     private Long remQty;
     private Long time;
+    private boolean isCanceled;
 
     public MatchingOrder(OrderDTO orderDTO) {
         this.orderDTO = orderDTO;
         this.remQty = orderDTO.getQty();
         this.time = System.nanoTime();
+        this.isCanceled = false;
     }
 }
