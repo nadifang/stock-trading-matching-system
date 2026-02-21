@@ -1,9 +1,6 @@
 import type { CancelOrderDTO, Result, SubmitOrderDTO } from "../types/server";
 
-const BASE_URL =
-  (typeof import.meta !== "undefined" &&
-    (import.meta as any).env?.VITE_API_BASE) ||
-  "/api";
+const BASE_URL = import.meta.env?.VITE_API_BASE || "/api";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${url}`, {
