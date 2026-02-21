@@ -32,4 +32,5 @@ public class orderDTO {
     public void setShareholderId(String shareholderId) {
         this.shareholderId = shareholderId != null ? shareholderId.toCharArray() : null;
     }
+
 }

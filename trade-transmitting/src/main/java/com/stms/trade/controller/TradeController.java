@@ -19,7 +19,7 @@ import javax.annotation.Resource;
 @Slf4j
 @RestController
 @RequestMapping("/trade")
-public class TradeController {
+public class  TradeController {
 
     @Resource
     private orderService orderService;
