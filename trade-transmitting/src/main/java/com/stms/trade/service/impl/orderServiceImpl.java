@@ -24,7 +24,9 @@ import org.springframework.stereotype.Service;
 import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -91,21 +93,23 @@ public class orderServiceImpl extends ServiceImpl<orderMapper, Order> implements
             //3.1 设置订单状态信息为待处理
             orderCommand.setStatus(OrderStatusConstant.ORDER_STATUS_PENDING);
 
-            //save(orderCommand);
-
             //3.2 执行Lua脚本，在Redis中创建订单信息
             String redisKey = RedisConstant.ORDER_STATUS_KEY + orderCommand.getClOrderId();
+            // 构建订单信息的参数列表（排除id字段）
+            List<String> args = new ArrayList<>();
+            args.add(orderCommand.getClOrderId());
+            args.add(orderCommand.getMarket());
+            args.add(orderCommand.getSecurityId());
+            args.add(orderCommand.getSide());
+            args.add(String.valueOf(orderCommand.getQty()));
+            args.add(String.valueOf(orderCommand.getPrice()));
+            args.add(orderCommand.getShareholderId());
+            args.add(OrderStatusConstant.ORDER_STATUS_PENDING);
+
             Long result = stringRedisTemplate.execute(
-                    ORDER_SUBMIT_SCRIPT,
+                    ORDER_SUBMIT_SCRIPT,  // 注入的Lua脚本
                     Collections.singletonList(redisKey),
-                    orderCommand.getClOrderId(),
-                    orderCommand.getMarket(),
-                    orderCommand.getSecurityId(),
-                    orderCommand.getSide(),
-                    String.valueOf(orderCommand.getQty()),
-                    String.valueOf(orderCommand.getPrice()),
-                    orderCommand.getShareholderId(),
-                    OrderStatusConstant.ORDER_STATUS_PENDING
+                    args.toArray(new String[0])
             );
 
             //3.3 判断Lua执行结果

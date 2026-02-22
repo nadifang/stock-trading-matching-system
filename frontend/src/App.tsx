@@ -411,6 +411,7 @@ export default function App() {
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
+  const cancelingOrderIdsRef = useRef<Set<string>>(new Set());
 
   /** 下单表单状态。 */
   const [form, setForm] = useState<OrderForm>({
@@ -482,6 +483,16 @@ export default function App() {
       wsBoundRef.current = false;
     };
   }, [currentUserId, handleTradeReturn]);
+
+  useEffect(() => {
+    const nextCancelingIds = new Set<string>();
+    for (const o of orders) {
+      if (o.status === OrderStatus.Canceling && cancelingOrderIdsRef.current.has(o.clOrderId)) {
+        nextCancelingIds.add(o.clOrderId);
+      }
+    }
+    cancelingOrderIdsRef.current = nextCancelingIds;
+  }, [orders]);
 
   /**
    * 提交新订单，调用后端 /trade。
@@ -581,11 +592,23 @@ export default function App() {
    */
   const handleCancel = async (origOrder: Order): Promise<void> => {
     setErrorMsg(null);
-    emitOrderEvent(origOrder.clOrderId, { type: "CANCEL_REQUEST" });
+    const clOrderId = origOrder.clOrderId;
+    const latestOrder = orders.find((o) => o.clOrderId === clOrderId) ?? origOrder;
+    const originalStatus = latestOrder.status;
+
+    if (
+      originalStatus === OrderStatus.Canceling ||
+      cancelingOrderIdsRef.current.has(clOrderId)
+    ) {
+      return;
+    }
+
+    cancelingOrderIdsRef.current.add(clOrderId);
+    emitOrderEvent(clOrderId, { type: "CANCEL_REQUEST" });
 
     const payload: CancelOrderDTO = {
       clOrderId: generateId(),
-      origClOrderId: origOrder.clOrderId,
+      origClOrderId: clOrderId,
       market: origOrder.market,
       securityId: origOrder.securityId,
       side: origOrder.side,
@@ -595,7 +618,25 @@ export default function App() {
     };
 
     try {
-      await api.cancelOrder(payload);
+      const resp = (await api.cancelOrder(payload)) as
+        | { status?: string; rejectText?: string; rejectCode?: number }
+        | undefined;
+
+      if (resp?.status?.trim().toUpperCase() === "REJECTED") {
+        cancelingOrderIdsRef.current.delete(clOrderId);
+        setOrders((prev) =>
+          prev.map((o) =>
+            o.clOrderId === clOrderId
+              ? {
+                  ...o,
+                  status: OrderStatus.Rejected,
+                  errorMsg: resp.rejectText ?? o.errorMsg,
+                  errorCode: resp.rejectCode ?? o.errorCode,
+                }
+              : o
+          )
+        );
+      }
     } catch (e: unknown) {
       let msg = "撤单失败";
       if (e instanceof Error) {
@@ -603,6 +644,14 @@ export default function App() {
       } else if (typeof e === "string") {
         msg = e;
       }
+      cancelingOrderIdsRef.current.delete(clOrderId);
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.clOrderId === clOrderId && o.status === OrderStatus.Canceling
+            ? { ...o, status: originalStatus }
+            : o
+        )
+      );
       setErrorMsg(msg);
     }
   };
