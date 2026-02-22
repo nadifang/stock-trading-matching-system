@@ -12,9 +12,11 @@ import com.stms.trade.domain.dto.orderDTO;
 import com.stms.trade.domain.entity.Order;
 import com.stms.trade.mapper.orderMapper;
 import com.stms.trade.service.OrderEventPublisherService;
+import com.stms.trade.service.RedisSecurityService;
 import com.stms.trade.service.orderService;
 import com.stms.trade.task.OrderCreatedEvent;
 import com.stms.trade.utils.TradeRespose;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -33,6 +35,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+@Slf4j
 @Service
 public class orderServiceImpl extends ServiceImpl<orderMapper, Order> implements orderService{
 
@@ -40,6 +43,8 @@ public class orderServiceImpl extends ServiceImpl<orderMapper, Order> implements
     private OrderEventPublisherService orderEventPublisherService;
     @Resource
     private StringRedisTemplate stringRedisTemplate;
+    @Resource
+    private RedisSecurityService redisSecurityService;
 
     private static final DefaultRedisScript<Long> ORDER_SUBMIT_SCRIPT ;       //声明lua脚本
     static {
@@ -83,19 +88,26 @@ public class orderServiceImpl extends ServiceImpl<orderMapper, Order> implements
         //1.订单格式化转换
         Order orderCommand = convertToOrderCommand(order);
 
-        //2.订单合法性验证
+        //2. 短时间内重复订单ID检测
+        if (redisSecurityService.isDuplicateOrderRequest(orderCommand.getClOrderId())) {
+            log.warn("短时间内重复订单请求，直接拒绝，clOrderId={}", orderCommand.getClOrderId());
+            return TradeRespose.fail(OrderIllegalCodeConstant.ORDER_DUPLICATE_REQUEST,
+                    OrderIllegalReasonConstant.ORDER_DUPLICATE_REQUEST_REASON);
+        }
+
+        //3.订单合法性验证
         TradeRespose tradeRespose =  validateOrder(orderCommand);
         BeanUtil.copyProperties(orderCommand, tradeRespose);
 
-        //3.订单入库
+        //4.订单入库
         if(tradeRespose.isSuccess()){
 
-            //3.1 设置订单状态信息为待处理
+            //4.1 设置订单状态信息为待处理
             orderCommand.setStatus(OrderStatusConstant.ORDER_STATUS_PENDING);
 
-            //3.2 执行Lua脚本，在Redis中创建订单信息
+            //4.2 执行Lua脚本，在Redis中创建订单信息
             String redisKey = RedisConstant.ORDER_STATUS_KEY + orderCommand.getClOrderId();
-            // 构建订单信息的参数列表（排除id字段）
+            //构建订单信息的参数列表（排除id字段）
             List<String> args = new ArrayList<>();
             args.add(orderCommand.getClOrderId());
             args.add(orderCommand.getMarket());
@@ -112,15 +124,22 @@ public class orderServiceImpl extends ServiceImpl<orderMapper, Order> implements
                     args.toArray(new String[0])
             );
 
-            //3.3 判断Lua执行结果
+            //4.3 判断Lua执行结果
             if (result == null || result != 1) {
                 // Lua 脚本执行失败（重复订单）
                 return TradeRespose.fail(OrderIllegalCodeConstant.ORDER_EXISTED,OrderIllegalReasonConstant.ORDER_EXISTED_REASON);
             }
 
-            orderTasks.add(orderCommand);
+            redisSecurityService.addOrderIdToBloomFilter(orderCommand.getClOrderId());
 
-            //4.使用RabbitMQ把订单数据发送到模拟风控系统，异步处理
+            boolean queued = orderTasks.add(orderCommand);
+
+            if (!queued) {
+                log.info("订单入队失败，订单ID：{}", orderCommand.getClOrderId());
+                return TradeRespose.fail(OrderIllegalCodeConstant.SYSTEM_IS_BUSY, OrderIllegalReasonConstant.SYSTEM_IS_BUSY_REASON);
+            }
+
+            //5.使用RabbitMQ把订单数据发送到模拟风控系统，异步处理
 //            OrderCreatedEvent event = new OrderCreatedEvent(
 //                    orderCommand.getClOrderId(),
 //                    orderCommand.getMarket(),
@@ -133,7 +152,7 @@ public class orderServiceImpl extends ServiceImpl<orderMapper, Order> implements
 //            orderEventPublisherService.publishOrderCreatedEvent(event);
         }
 
-        //5.返回订单
+        //6.返回订单
         return tradeRespose;
     }
 

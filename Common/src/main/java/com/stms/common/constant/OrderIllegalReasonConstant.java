@@ -21,4 +21,8 @@ public class OrderIllegalReasonConstant {
     public static final String SHAREHOLDER_ID_ILLEGAL_REASON = "股东号必须为10位";
 
     public static final String ORDER_EXISTED_REASON = "订单重复创建";
+
+    public static final String SYSTEM_IS_BUSY_REASON = "系统繁忙，请重试";
+
+    public static final String ORDER_DUPLICATE_REQUEST_REASON = "订单重复创建";
 }
