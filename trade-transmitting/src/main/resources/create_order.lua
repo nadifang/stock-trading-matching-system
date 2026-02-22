@@ -3,27 +3,44 @@
 --- Created by 24232.
 --- DateTime: 2026/2/21 20:10
 ---
-local orderKey = KEYS[1]
+-- 订单状态存储 Lua 脚本
+local orderStatusKey = KEYS[1]
 local clOrderId = ARGV[1]
+local market = ARGV[2]
+local securityId = ARGV[3]
+local side = ARGV[4]
+local qty = ARGV[5]
+local price = ARGV[6]
+local shareholderId = ARGV[7]
+local status = ARGV[8]
 
 -- 检查订单是否已存在
-if redis.call('EXISTS', orderKey) == 1 then
-    return 0  -- 已存在
+local existingOrder = redis.call('GET', orderStatusKey)
+if existingOrder then
+    return 0 -- 订单已存在
 end
 
--- 写入订单信息
-redis.call('HMSET', orderKey,
-        'clOrderId', clOrderId,
-        'market', ARGV[2],
-        'securityId', ARGV[3],
-        'side', ARGV[4],
-        'qty', ARGV[5],
-        'price', ARGV[6],
-        'shareholderId', ARGV[7],
-        'status', ARGV[8]
-)
+-- 创建订单信息JSON对象（排除id字段）
+local orderInfo = {
+    clOrderId = clOrderId,
+    market = market,
+    securityId = securityId,
+    side = side,
+    qty = qty,
+    price = price,
+    shareholderId = shareholderId,
+    status = status,
+    cum_qty = 0,          -- 初始化累计成交数量
+    canceled_qty = 0,     -- 初始化已撤数量
+    remaining_qty = qty,  -- 初始剩余数量等于总数量
+    traded_amount = 0     -- 初始化累计成交金额
+}
 
--- 设置订单状态缓存
-redis.call('SET', 'order:status:' .. clOrderId, ARGV[8])
+-- 序列化为JSON字符串
+local orderInfoJson = cjson.encode(orderInfo)
 
-return 1  -- 成功
+-- 存储订单信息，设置过期时间（可选）
+redis.call('SET', orderStatusKey, orderInfoJson)
+redis.call('EXPIRE', orderStatusKey, 86400) -- 设置24小时过期时间
+
+return 1 -- 成功创建
