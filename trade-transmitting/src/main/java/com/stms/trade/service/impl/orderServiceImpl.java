@@ -91,8 +91,6 @@ public class orderServiceImpl extends ServiceImpl<orderMapper, Order> implements
             //3.1 设置订单状态信息为待处理
             orderCommand.setStatus(OrderStatusConstant.ORDER_STATUS_PENDING);
 
-            //save(orderCommand);
-
             //3.2 执行Lua脚本，在Redis中创建订单信息
             String redisKey = RedisConstant.ORDER_STATUS_KEY + orderCommand.getClOrderId();
             Long result = stringRedisTemplate.execute(
