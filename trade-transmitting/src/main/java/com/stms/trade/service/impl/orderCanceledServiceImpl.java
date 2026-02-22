@@ -11,6 +11,7 @@ import com.stms.trade.service.orderCanceledService;
 import com.stms.trade.utils.CanceledResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 
@@ -23,6 +24,7 @@ public class orderCanceledServiceImpl extends ServiceImpl<orderMapper, Order> im
     private OrderEventPublisherService orderEventPublisherService;
 
     @Override
+    @Transactional
     public CanceledResponse cancelOrder(orderCanceledDTO order) {
 
         //1.格式化订单

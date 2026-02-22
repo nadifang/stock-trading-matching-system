@@ -19,4 +19,6 @@ public class OrderIllegalReasonConstant {
     public static final String PRICE_ILLEGAL_REASON = "价格必须大于0";
 
     public static final String SHAREHOLDER_ID_ILLEGAL_REASON = "股东号必须为10位";
+
+    public static final String ORDER_EXISTED_REASON = "订单重复创建";
 }

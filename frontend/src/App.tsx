@@ -60,6 +60,8 @@ interface Order {
   cumQty: number;
   execPrice: number;
   canceledQty?: number;
+  errorMsg?: string;
+  errorCode?: number;
 }
 
 /**
@@ -155,13 +157,20 @@ const applyTradeReturnStatus = (
   const baseOrder: Order = ret.execPrice !== undefined
     ? { ...order, execPrice: ret.execPrice }
     : order;
+  const rejectedOrder: Order = {
+    ...baseOrder,
+    status: OrderStatus.Rejected,
+    errorMsg: ret.rejectText ?? baseOrder.errorMsg,
+    errorCode: ret.rejectCode ?? baseOrder.errorCode,
+  };
 
   switch (nextStatus) {
     case OrderStatus.Pending:
     case OrderStatus.Acked:
     case OrderStatus.Canceling:
-    case OrderStatus.Rejected:
       return shouldUpdateStatus ? { ...baseOrder, status: nextStatus } : baseOrder;
+    case OrderStatus.Rejected:
+      return shouldUpdateStatus ? rejectedOrder : baseOrder;
     case OrderStatus.PartiallyFilled:
       return shouldUpdateStatus
         ? { ...baseOrder, status: OrderStatus.PartiallyFilled, cumQty: syncedCumQty }
@@ -419,10 +428,22 @@ export default function App() {
                 frontendStatus = OrderStatus.Rejected;
                 break;
             }
+            const respWithReject = resp as { rejectText?: string; rejectCode?: number };
             setOrders((prev) =>
             prev.map((o) =>
                 o.clOrderId === newOrder.clOrderId
-                ? { ...o, status: frontendStatus }
+                ? {
+                    ...o,
+                    status: frontendStatus,
+                    errorMsg:
+                      frontendStatus === OrderStatus.Rejected
+                        ? (respWithReject.rejectText ?? o.errorMsg)
+                        : o.errorMsg,
+                    errorCode:
+                      frontendStatus === OrderStatus.Rejected
+                        ? (respWithReject.rejectCode ?? o.errorCode)
+                        : o.errorCode,
+                  }
                 : o
             )
             );
@@ -438,7 +459,7 @@ export default function App() {
       setOrders((prev) =>
         prev.map((o) =>
           o.clOrderId === newOrder.clOrderId
-            ? { ...o, status: OrderStatus.Rejected }
+            ? { ...o, status: OrderStatus.Rejected, errorMsg: msg }
             : o
         )
       );
