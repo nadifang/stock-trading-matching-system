@@ -310,13 +310,107 @@ const getStatusClassName = (status: OrderStatus): string => {
 };
 
 /**
- * 交易员终端主界面。
- */
+   * 交易员终端主界面。
+   */
 export default function App() {
   /** 订单列表状态。 */
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [orders, setOrders] = useState<Order[]>([
+    // 模拟数据：测试不同状态的订单
+    {
+      clOrderId: "TEST0000000001",
+      market: "XSHG",
+      securityId: "600030",
+      side: "B",
+      qty: 500,
+      price: 14.5,
+      shareholderId: "A123456789",
+      status: OrderStatus.Pending,
+      cumQty: 0,
+      execPrice: 0,
+      canceledQty: 0,
+    },
+    {
+      clOrderId: "TEST0000000002",
+      market: "XSHG",
+      securityId: "601888",
+      side: "S",
+      qty: 300,
+      price: 25.8,
+      shareholderId: "A123456789",
+      status: OrderStatus.Acked,
+      cumQty: 0,
+      execPrice: 0,
+      canceledQty: 0,
+    },
+    {
+      clOrderId: "TEST0000000003",
+      market: "XSHE",
+      securityId: "000858",
+      side: "B",
+      qty: 800,
+      price: 32.6,
+      shareholderId: "A123456789",
+      status: OrderStatus.PartiallyFilled,
+      cumQty: 450,
+      execPrice: 32.6,
+      canceledQty: 0,
+    },
+    {
+      clOrderId: "TEST0000000004",
+      market: "XSHG",
+      securityId: "600028",
+      side: "S",
+      qty: 200,
+      price: 7.2,
+      shareholderId: "A123456789",
+      status: OrderStatus.Filled,
+      cumQty: 200,
+      execPrice: 7.2,
+      canceledQty: 0,
+    },
+    {
+      clOrderId: "TEST0000000005",
+      market: "XSHG",
+      securityId: "601318",
+      side: "B",
+      qty: 1200,
+      price: 5.5,
+      shareholderId: "A123456789",
+      status: OrderStatus.Canceled,
+      cumQty: 0,
+      execPrice: 0,
+      canceledQty: 1200,
+    },
+    {
+      clOrderId: "TEST0000000006",
+      market: "XSHG",
+      securityId: "600519",
+      side: "B",
+      qty: 10,
+      price: 1780.0,
+      shareholderId: "A123456789",
+      status: OrderStatus.PartiallyFilled,
+      cumQty: 5,
+      execPrice: 1780.0,
+      canceledQty: 0,
+    },
+    {
+      clOrderId: "TEST0000000007",
+      market: "XSHE",
+      securityId: "000001",
+      side: "S",
+      qty: 600,
+      price: 16.8,
+      shareholderId: "A123456789",
+      status: OrderStatus.Filled,
+      cumQty: 600,
+      execPrice: 16.8,
+      canceledQty: 0,
+    },
+  ]);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [wsConnected, setWsConnected] = useState(false);
 
   /** 下单表单状态。 */
   const [form, setForm] = useState<OrderForm>({
@@ -367,10 +461,24 @@ export default function App() {
    */
   useEffect(() => {
     if (!currentUserId || wsBoundRef.current) return;
-    connectTradeReturnWS(currentUserId, handleTradeReturn);
+    
+    // 按照回调函数方案实现
+    connectTradeReturnWS({
+      userId: currentUserId,
+      handleTradeReturn: (ret) => {
+        // 直接调用回调函数，将解析好的VO对象传递给业务逻辑
+        handleTradeReturn(ret);
+      },
+      onStatusChange: (connected) => {
+        setWsConnected(connected);
+        console.log(`WebSocket connection status: ${connected ? 'connected' : 'disconnected'}`);
+      },
+    });
+    
     wsBoundRef.current = true;
     return () => {
       disconnectTradeReturnWS();
+      setWsConnected(false);
       wsBoundRef.current = false;
     };
   }, [currentUserId, handleTradeReturn]);
@@ -509,7 +617,13 @@ export default function App() {
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
-      <h1 className="text-2xl font-bold mb-6 text-blue-800">交易员终端 - 模拟交易对敲系统</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold text-blue-800">交易员终端 - 模拟交易对敲系统</h1>
+        <div className={`flex items-center px-3 py-1 rounded-full text-sm ${wsConnected ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+          <span className={`w-2 h-2 rounded-full mr-2 ${wsConnected ? 'bg-green-500' : 'bg-red-500'}`}></span>
+          {wsConnected ? 'WebSocket已连接' : 'WebSocket未连接'}
+        </div>
+      </div>
 
       <div className="bg-white p-4 rounded-lg shadow mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="flex flex-col">
