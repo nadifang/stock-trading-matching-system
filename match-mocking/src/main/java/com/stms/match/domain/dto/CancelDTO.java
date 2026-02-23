@@ -4,8 +4,8 @@ import lombok.Data;
 
 @Data
 public class CancelDTO {
-    private String orderId;
-    private String originalOrderId;
+    private String clOrderId;
+    private String origClOrderId;
     private String market;
     private String securityId;
     private String side;

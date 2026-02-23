@@ -1,7 +1,7 @@
 package com.stms.match.service.impl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stms.common.constant.OrderStatusConstant;
 import com.stms.common.constant.RedisConstant;
@@ -10,15 +10,13 @@ import com.stms.match.domain.dto.OrderDTO;
 import com.stms.match.domain.entity.Transaction;
 import com.stms.match.mapper.TransactionMapper;
 import com.stms.match.service.MatchService;
+import com.stms.match.service.TradeSyncDatabaseService;
 import com.stms.match.utils.MatchingOrder;
 import com.stms.match.utils.OrderBook;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 
-import java.util.Arrays;
+import javax.annotation.Resource;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.TreeMap;
@@ -29,26 +27,36 @@ public class MatchServiceImpl extends ServiceImpl<TransactionMapper, Transaction
 
     private final ConcurrentHashMap<String, OrderBook> orderBooks = new ConcurrentHashMap<>();
 
-    @Autowired
+    @Resource
     private StringRedisTemplate redisTemplate;
 
-    @Autowired
+    @Resource
     private ObjectMapper objectMapper;
 
-    private static final DefaultRedisScript<Long> TRADE_PUSH_SCRIPT;
-
-    static {
-        TRADE_PUSH_SCRIPT = new DefaultRedisScript<>();
-        TRADE_PUSH_SCRIPT.setLocation(new ClassPathResource("trade_check_and_push.lua"));
-        TRADE_PUSH_SCRIPT.setResultType(Long.class);
-    }
+    @Resource
+    private TradeSyncDatabaseService tradeSyncDatabaseService;
 
     @Override
     public void processOrder(OrderDTO order) {
-        String currentStatus = redisTemplate.opsForValue().get(RedisConstant.ORDER_STATUS_KEY + order.getOrderId());
-        if (OrderStatusConstant.ORDER_STATUS_CANCELED.equals(currentStatus)) {
-            System.out.println("订单在Redis中已撤销，放弃进入撮合池 | 订单ID: " + order.getOrderId());
-            return;
+        String orderJson = redisTemplate.opsForValue().get(RedisConstant.ORDER_STATUS_KEY + order.getClOrderId());
+
+        if (orderJson != null && !orderJson.trim().isEmpty()) {
+            try {
+                Map<String, Object> orderMap = objectMapper.readValue(orderJson, new TypeReference<>() {
+                });
+
+                String currentStatus = String.valueOf(orderMap.get("status"));
+
+                if (OrderStatusConstant.ORDER_STATUS_CANCELED.equals(currentStatus) ||
+                        OrderStatusConstant.ORDER_STATUS_REJECTED.equals(currentStatus)) {
+                    System.out.println("拦截：订单状态为 " + currentStatus + "，放弃进入撮合池 | 订单ID: " + order.getClOrderId());
+                    return;
+                }
+            } catch (Exception e) {
+                // 如果 JSON 解析发生异常，为了安全起见，拦截该订单并打印日志
+                System.out.println("拦截：解析Redis订单状态异常，放弃进入撮合池 | 订单ID: " + order.getClOrderId() + "，异常：" + e.getMessage());
+                return;
+            }
         }
 
         String securityId = order.getSecurityId();
@@ -56,7 +64,7 @@ public class MatchServiceImpl extends ServiceImpl<TransactionMapper, Transaction
         MatchingOrder matchingOrder = new MatchingOrder(order);
 
         synchronized (book) {
-            book.orderIndex.put(order.getOrderId(), matchingOrder);
+            book.orderIndex.put(order.getClOrderId(), matchingOrder);
 
             if ("B".equalsIgnoreCase(order.getSide())) {
                 matchOrder(book, matchingOrder, true);
@@ -68,7 +76,7 @@ public class MatchServiceImpl extends ServiceImpl<TransactionMapper, Transaction
 
     @Override
     public boolean cancelOrder(CancelDTO cancelDTO) {
-        String orderId = cancelDTO.getOriginalOrderId();
+        String orderId = cancelDTO.getOrigClOrderId();
         OrderBook book = orderBooks.get(cancelDTO.getSecurityId());
 
         if (book == null) {
@@ -76,7 +84,7 @@ public class MatchServiceImpl extends ServiceImpl<TransactionMapper, Transaction
         }
 
         synchronized (book) {
-            MatchingOrder target = book.orderIndex.get(cancelDTO.getOriginalOrderId());
+            MatchingOrder target = book.orderIndex.get(cancelDTO.getOrigClOrderId());
             if (target != null && target.getRemQty() > 0 && !target.isCanceled()) {
                 target.setCanceled(true);
                 book.orderIndex.remove(orderId);
@@ -111,7 +119,7 @@ public class MatchServiceImpl extends ServiceImpl<TransactionMapper, Transaction
                 if (bestOrders.isEmpty()) {
                     makerBook.remove(bestPrice);
                 }
-                book.orderIndex.remove(makerOrder.getOrderDTO().getOrderId());
+                book.orderIndex.remove(makerOrder.getOrderDTO().getClOrderId());
                 continue;
             }
 
@@ -122,7 +130,7 @@ public class MatchServiceImpl extends ServiceImpl<TransactionMapper, Transaction
                 if (bestOrders.isEmpty()) {
                     makerBook.remove(bestPrice);
                 }
-                book.orderIndex.remove(makerOrder.getOrderDTO().getOrderId());
+                book.orderIndex.remove(makerOrder.getOrderDTO().getClOrderId());
             }
         }
 
@@ -130,7 +138,7 @@ public class MatchServiceImpl extends ServiceImpl<TransactionMapper, Transaction
             TreeMap<Double, LinkedList<MatchingOrder>> targetBook = isBuy ? book.buyBook : book.sellBook;
             targetBook.computeIfAbsent(takerOrder.getOrderDTO().getPrice(), k -> new LinkedList<>()).add(takerOrder);
         } else {
-            book.orderIndex.remove(takerOrder.getOrderDTO().getOrderId());
+            book.orderIndex.remove(takerOrder.getOrderDTO().getClOrderId());
         }
     }
 
@@ -138,42 +146,60 @@ public class MatchServiceImpl extends ServiceImpl<TransactionMapper, Transaction
         Long execQty = Math.min(takerOrder.getRemQty(), makerOrder.getRemQty());
         Double execPrice = makerOrder.getOrderDTO().getPrice();
 
-        takerOrder.setRemQty(takerOrder.getRemQty() - execQty);
-        makerOrder.setRemQty(makerOrder.getRemQty() - execQty);
-
         MatchingOrder buyOrder = takerIsBuy ? takerOrder : makerOrder;
         MatchingOrder sellOrder = takerIsBuy ? makerOrder : takerOrder;
         Transaction transaction = buildTransaction(buyOrder, sellOrder, execQty, execPrice);
 
         try {
-            String transactionJson = objectMapper.writeValueAsString(transaction);
+            tradeSyncDatabaseService.syncTradeToDatabase(buyOrder, sellOrder, execQty, execPrice, transaction);
 
-            // 2. 获取买卖双方的全局状态Key
-            String takerStatusKey = RedisConstant.ORDER_STATUS_KEY + takerOrder.getOrderDTO().getOrderId();
-            String makerStatusKey = RedisConstant.ORDER_STATUS_KEY + makerOrder.getOrderDTO().getOrderId();
+            takerOrder.setRemQty(takerOrder.getRemQty() - execQty);
+            makerOrder.setRemQty(makerOrder.getRemQty() - execQty);
+            System.out.println("撮合成功并同步落库 | 股票: " + transaction.getSecurityId() +
+                    " | 成交价: " + execPrice + " | 成交量: " + execQty);
+            updateRedisAfterTrade(takerOrder, execQty, execPrice);
+            updateRedisAfterTrade(makerOrder, execQty, execPrice);
+        } catch (Exception e) {
+            System.out.println("数据库同步失败，交易回滚 | 股票: " + transaction.getSecurityId() +
+                    " | 成交价: " + execPrice + " | 成交量: " + execQty);
+            takerOrder.setCanceled(true);
+            makerOrder.setCanceled(true);
+        }
+    }
 
-            // 3. 执行Lua脚本：原子校验全局状态并推入队列
-            Long result = redisTemplate.execute(
-                    TRADE_PUSH_SCRIPT,
-                    Arrays.asList(takerStatusKey, makerStatusKey, RedisConstant.TRANSACTION_QUEUE_KEY),
-                    transactionJson,
-                    OrderStatusConstant.ORDER_STATUS_CANCELED
-            );
+    private void updateRedisAfterTrade(MatchingOrder order, Long execQty, Double execPrice) {
+        String statusKey = RedisConstant.ORDER_STATUS_KEY + order.getOrderDTO().getClOrderId();
+        String orderJson = redisTemplate.opsForValue().get(statusKey);
 
-            // 4. 判断结果：成功则Redis托管，失败则回滚
-            if (result == 1) {
-                System.out.println("撮合成功并推入Redis | 股票: " + transaction.getSecurityId() +
-                        " | 成交价: " + execPrice + " | 成交量: " + execQty);
-            } else {
-                // 回滚内存数据
-                takerOrder.setRemQty(takerOrder.getRemQty() + execQty);
-                makerOrder.setRemQty(makerOrder.getRemQty() + execQty);
-                System.out.println("拦截：全局状态已撤单，撮合操作回滚 | 买单: " + transaction.getBuyOrderId() + " 卖单: " + transaction.getSellOrderId());
+        if (orderJson != null && !orderJson.isEmpty()) {
+            try {
+                // 1. 解析 JSON 为 Map
+                Map<String, Object> orderMap = objectMapper.readValue(orderJson, new TypeReference<>() {
+                });
+
+                // 2. 判断新状态
+                String newStatus = (order.getRemQty() == 0)
+                        ? OrderStatusConstant.ORDER_STATUS_FILLED
+                        : OrderStatusConstant.ORDER_STATUS_MATCHED;
+
+                // 3. 更新关键字段
+                orderMap.put("status", newStatus);
+                orderMap.put("remaining_qty", order.getRemQty());
+
+                // 计算累计数量和累计金额 (注意数据类型转换，Redis反序列化后数字可能是Integer)
+                long currentCumQty = Long.parseLong(String.valueOf(orderMap.getOrDefault("cum_qty", 0)));
+                double currentTradedAmount = Double.parseDouble(String.valueOf(orderMap.getOrDefault("traded_amount", 0.0)));
+
+                orderMap.put("cum_qty", currentCumQty + execQty);
+                orderMap.put("traded_amount", currentTradedAmount + (execQty * execPrice));
+
+                // 4. 将更新后的Map重新序列化为JSON，并写回Redis（重置过期时间为1天）
+                String updatedOrderJson = objectMapper.writeValueAsString(orderMap);
+                redisTemplate.opsForValue().set(statusKey, updatedOrderJson, 1, java.util.concurrent.TimeUnit.DAYS);
+
+            } catch (Exception e) {
+                System.out.println("更新Redis订单状态失败，订单号：" + order.getOrderDTO().getClOrderId() + "，异常：" + e.getMessage());
             }
-        } catch (JsonProcessingException e) {
-            takerOrder.setRemQty(takerOrder.getRemQty() + execQty);
-            makerOrder.setRemQty(makerOrder.getRemQty() + execQty);
-            System.out.println("撮合序列化异常，已回滚：" + e.getMessage());
         }
     }
 
@@ -183,8 +209,8 @@ public class MatchServiceImpl extends ServiceImpl<TransactionMapper, Transaction
         transaction.setSecurityId(buy.getOrderDTO().getSecurityId());
         transaction.setExecPrice(execPrice);
         transaction.setExecQty(execQty);
-        transaction.setBuyOrderId(buy.getOrderDTO().getOrderId());
-        transaction.setSellOrderId(sell.getOrderDTO().getOrderId());
+        transaction.setBuyOrderId(buy.getOrderDTO().getClOrderId());
+        transaction.setSellOrderId(sell.getOrderDTO().getClOrderId());
         transaction.setBuyerId(buy.getOrderDTO().getShareholderId());
         transaction.setSellerId(sell.getOrderDTO().getShareholderId());
         return transaction;
