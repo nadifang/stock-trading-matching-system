@@ -441,19 +441,108 @@ export default function App() {
    * 处理后端回报，转换为状态机事件。
    */
   const handleTradeReturn = useCallback((ret: TradeReturnVO) => {
-    const clId = ret.clOrderId || ret.origClOrderId || "";
-    if (!clId) return;
-    const mappedStatus = resolveOrderStatusFromTradeReturn(ret.status);
-    if (!mappedStatus) return;
+    const orderId = ret.clOrderId || ret.origClOrderId || "";
+    if (!orderId) return;
+
+    const statusKey = (ret.status ?? "")
+      .trim()
+      .toUpperCase()
+      .replace(/[\s-]+/g, "_");
+
+    const isCancelSuccess =
+      statusKey === "CANCEL_ACK" || statusKey === "CANCELED" || statusKey === "CANCELLED";
+    const isCancelReject =
+      statusKey === "CANCEL_REJECT" ||
+      statusKey === "CANCEL_REJECTED" ||
+      statusKey === "CANCEL_FAIL" ||
+      statusKey === "CANCEL_FAILED";
+    const isCancelRelated = isCancelSuccess || isCancelReject || statusKey === "CANCELING";
+    const isExecutionRelated =
+      statusKey === "EXECUTION" ||
+      statusKey === "PARTIAL" ||
+      statusKey === "PARTIAL_FILL" ||
+      statusKey === "ORDER_PARTIAL_FILL" ||
+      statusKey === "PARTIALLY_FILLED" ||
+      statusKey === "FILL" ||
+      statusKey === "ORDER_FILL" ||
+      statusKey === "FILLED";
+    const isRejected = statusKey === "REJECTED";
 
     setOrders((prev) => {
-      let changed = false;
-      const next = prev.map((o) => {
-        if (o.clOrderId !== clId) return o;
-        changed = true;
-        return applyTradeReturnStatus(o, mappedStatus, ret);
-      });
-      return changed ? next : prev;
+      const index = prev.findIndex((o) => o.clOrderId === orderId);
+      if (index < 0) return prev;
+
+      const current = prev[index];
+      const rejectRet = ret as TradeReturnVO & { errorMsg?: string; errorCode?: number };
+      const syncCumQty = Math.max(
+        0,
+        Math.min(current.qty, ret.cumQty ?? current.cumQty)
+      );
+      let nextOrder = current;
+
+      if (isCancelRelated) {
+        cancelingOrderIdsRef.current.delete(orderId);
+      }
+
+      if (isRejected) {
+        nextOrder = {
+          ...current,
+          status: OrderStatus.Rejected,
+          errorMsg: rejectRet.errorMsg ?? ret.rejectText ?? current.errorMsg,
+          errorCode: rejectRet.errorCode ?? ret.rejectCode ?? current.errorCode,
+        };
+      } else if (isCancelSuccess) {
+        nextOrder = {
+          ...current,
+          status: OrderStatus.Canceled,
+          cumQty: syncCumQty,
+          canceledQty: Math.max(0, current.qty - syncCumQty),
+        };
+      } else if (isCancelReject) {
+        const rollbackStatus =
+          syncCumQty === 0
+            ? OrderStatus.Acked
+            : syncCumQty < current.qty
+              ? OrderStatus.PartiallyFilled
+              : OrderStatus.Filled;
+
+        nextOrder = {
+          ...current,
+          status: rollbackStatus,
+          cumQty: syncCumQty,
+          canceledQty: rollbackStatus === OrderStatus.Filled ? 0 : current.canceledQty,
+          errorMsg: rejectRet.errorMsg ?? current.errorMsg,
+        };
+      } else if (isExecutionRelated) {
+        if (current.status === OrderStatus.Canceled || current.status === OrderStatus.Rejected) {
+          return prev;
+        }
+
+        const nextCumQty = syncCumQty;
+        const nextStatus =
+          nextCumQty >= current.qty
+            ? OrderStatus.Filled
+            : nextCumQty > 0
+              ? OrderStatus.PartiallyFilled
+              : current.status;
+
+        nextOrder = {
+          ...current,
+          status: nextStatus,
+          cumQty: nextCumQty,
+          execPrice: ret.execPrice ?? current.execPrice,
+          canceledQty: nextStatus === OrderStatus.Filled ? 0 : current.canceledQty,
+        };
+      } else {
+        const mappedStatus = resolveOrderStatusFromTradeReturn(ret.status);
+        if (!mappedStatus) return prev;
+        nextOrder = applyTradeReturnStatus(current, mappedStatus, ret);
+      }
+
+      if (nextOrder === current) return prev;
+      const next = [...prev];
+      next[index] = nextOrder;
+      return next;
     });
   }, []);
 
