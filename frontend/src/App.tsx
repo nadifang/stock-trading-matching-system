@@ -314,100 +314,7 @@ const getStatusClassName = (status: OrderStatus): string => {
    */
 export default function App() {
   /** 订单列表状态。 */
-  const [orders, setOrders] = useState<Order[]>([
-    // 模拟数据：测试不同状态的订单
-    {
-      clOrderId: "TEST0000000001",
-      market: "XSHG",
-      securityId: "600030",
-      side: "B",
-      qty: 500,
-      price: 14.5,
-      shareholderId: "A123456789",
-      status: OrderStatus.Pending,
-      cumQty: 0,
-      execPrice: 0,
-      canceledQty: 0,
-    },
-    {
-      clOrderId: "TEST0000000002",
-      market: "XSHG",
-      securityId: "601888",
-      side: "S",
-      qty: 300,
-      price: 25.8,
-      shareholderId: "A123456789",
-      status: OrderStatus.Acked,
-      cumQty: 0,
-      execPrice: 0,
-      canceledQty: 0,
-    },
-    {
-      clOrderId: "TEST0000000003",
-      market: "XSHE",
-      securityId: "000858",
-      side: "B",
-      qty: 800,
-      price: 32.6,
-      shareholderId: "A123456789",
-      status: OrderStatus.PartiallyFilled,
-      cumQty: 450,
-      execPrice: 32.6,
-      canceledQty: 0,
-    },
-    {
-      clOrderId: "TEST0000000004",
-      market: "XSHG",
-      securityId: "600028",
-      side: "S",
-      qty: 200,
-      price: 7.2,
-      shareholderId: "A123456789",
-      status: OrderStatus.Filled,
-      cumQty: 200,
-      execPrice: 7.2,
-      canceledQty: 0,
-    },
-    {
-      clOrderId: "TEST0000000005",
-      market: "XSHG",
-      securityId: "601318",
-      side: "B",
-      qty: 1200,
-      price: 5.5,
-      shareholderId: "A123456789",
-      status: OrderStatus.Canceled,
-      cumQty: 0,
-      execPrice: 0,
-      canceledQty: 1200,
-    },
-    {
-      clOrderId: "TEST0000000006",
-      market: "XSHG",
-      securityId: "600519",
-      side: "B",
-      qty: 10,
-      price: 1780.0,
-      shareholderId: "A123456789",
-      status: OrderStatus.PartiallyFilled,
-      cumQty: 5,
-      execPrice: 1780.0,
-      canceledQty: 0,
-    },
-    {
-      clOrderId: "TEST0000000007",
-      market: "XSHE",
-      securityId: "000001",
-      side: "S",
-      qty: 600,
-      price: 16.8,
-      shareholderId: "A123456789",
-      status: OrderStatus.Filled,
-      cumQty: 600,
-      execPrice: 16.8,
-      canceledQty: 0,
-    },
-  ]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
@@ -851,9 +758,21 @@ export default function App() {
                 <td className="p-3">{o.qty}</td>
 
                 <td className="p-3">
-                  <span className={`px-2 py-1 rounded text-xs ${getStatusClassName(o.status)}`}>
+                  <span
+                    className={`px-2 py-1 rounded text-xs ${getStatusClassName(o.status)}`}
+                    title={
+                      o.status === OrderStatus.Rejected && o.errorMsg
+                        ? `错误代码: ${o.errorCode ?? ""} ${o.errorMsg ?? ""}`
+                        : undefined
+                    }
+                  >
                     {o.status}
                   </span>
+                  {o.status === OrderStatus.Rejected && o.errorMsg && (
+                    <div className="text-xs text-red-500 mt-1 truncate max-w-[120px]">
+                      {o.errorMsg}
+                    </div>
+                  )}
                 </td>
 
                 <td className="p-3">
