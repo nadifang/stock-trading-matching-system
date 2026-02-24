@@ -22,4 +22,8 @@ public class OrderIllegalCodeConstant {
     public static final int SHAREHOLDER_ID_ILLEGAL = 1008;
 
     public static final int ORDER_EXISTED = 1009;
+
+    public static final int SYSTEM_IS_BUSY = 1010;
+
+    public static final int  ORDER_DUPLICATE_REQUEST = 1011;
 }

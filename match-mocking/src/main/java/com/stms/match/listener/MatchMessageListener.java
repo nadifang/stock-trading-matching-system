@@ -25,9 +25,9 @@ public class MatchMessageListener {
     public void handleOrderFromMQ(String orderJson) {
         try {
             OrderDTO order = objectMapper.readValue(orderJson, OrderDTO.class);
-            log.info("从MQ收到风控订单：{}", order.getOrderId());
+            log.info("从MQ收到风控订单：{}", order.getClOrderId());
             matchService.processOrder(order); // 直接调用队友的方法
-            log.info("MQ订单处理完成：{}", order.getOrderId());
+            log.info("MQ订单处理完成：{}", order.getClOrderId());
         } catch (Exception e) {
             log.error("处理MQ订单失败：{}", orderJson, e);
         }
@@ -38,12 +38,12 @@ public class MatchMessageListener {
     public void handleCancelFromMQ(String cancelJson) {
         try {
             CancelDTO cancelDTO = objectMapper.readValue(cancelJson, CancelDTO.class);
-            log.info("从MQ收到风控撤单：原订单ID={}", cancelDTO.getOriginalOrderId());
+            log.info("从MQ收到风控撤单：原订单ID={}", cancelDTO.getOrigClOrderId());
             boolean cancelResult = matchService.cancelOrder(cancelDTO);
             if (cancelResult) {
-                log.info("撤单成功：原订单ID={}", cancelDTO.getOriginalOrderId());
+                log.info("撤单成功：原订单ID={}", cancelDTO.getOrigClOrderId());
             } else {
-                log.warn("撤单失败：原订单ID={}（已成交/不存在）", cancelDTO.getOriginalOrderId());
+                log.warn("撤单失败：原订单ID={}（已成交/不存在）", cancelDTO.getOrigClOrderId());
             }
         } catch (Exception e) {
             log.error("处理MQ撤单失败：{}", cancelJson, e);

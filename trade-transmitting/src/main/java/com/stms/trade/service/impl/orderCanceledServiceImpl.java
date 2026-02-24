@@ -10,6 +10,7 @@ import com.stms.trade.domain.dto.orderCanceledDTO;
 import com.stms.trade.domain.entity.Order;
 import com.stms.trade.mapper.orderMapper;
 import com.stms.trade.service.OrderEventPublisherService;
+import com.stms.trade.service.RedisSecurityService;
 import com.stms.trade.service.orderCanceledService;
 import com.stms.trade.utils.CanceledResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -27,13 +28,8 @@ import java.util.concurrent.TimeUnit;
 @Service
 public class orderCanceledServiceImpl extends ServiceImpl<orderMapper, Order> implements orderCanceledService {
 
-
     @Resource
-    private OrderEventPublisherService orderEventPublisherService;
-    @Resource
-    private StringRedisTemplate stringRedisTemplate;
-    @Resource
-    private ObjectMapper objectMapper;
+    private RedisSecurityService redisSecurityService;
 
     @Override
     @Transactional
@@ -44,33 +40,26 @@ public class orderCanceledServiceImpl extends ServiceImpl<orderMapper, Order> im
 
         //2.修改订单状态
         //2.1 修改数据库订单状态
-        lambdaUpdate().eq(Order::getClOrderId, canceledResponse.getClOrderId())
-                .set(Order::getStatus, OrderStatusConstant.ORDER_STATUS_CANCELED)
-                .update();
+        boolean order_pending = lambdaQuery()
+                .eq(Order::getClOrderId, canceledResponse.getClOrderId())
+                .eq(Order::getStatus, OrderStatusConstant.ORDER_STATUS_PENDING)
+                .count() > 0;
+        if (order_pending) {
+            lambdaUpdate().eq(Order::getClOrderId, canceledResponse.getClOrderId())
+                    .set(Order::getStatus, OrderStatusConstant.ORDER_STATUS_CANCELED)
+                    .update();
+        }
 
         //2.2 修改redis中订单状态
-        String redisKey = RedisConstant.ORDER_STATUS_KEY + canceledResponse.getClOrderId();
-        //2.3 获取当前订单信息
-        String orderJson = stringRedisTemplate.opsForValue().get(redisKey);
+        boolean cacheUpdated = redisSecurityService.updateOrderStatusWithProtection(
+                canceledResponse.getClOrderId(),
+                OrderStatusConstant.ORDER_STATUS_CANCELED,
+                () -> true // 数据库已更新，这里直接返回true
+        );
 
-        if (StringUtils.isNotBlank(orderJson)) {
-            try {
-                // 解析JSON为Map
-                Map<String, Object> orderMap = objectMapper.readValue(orderJson, new TypeReference<Map<String, Object>>() {});
-
-                // 更新状态和其他可能变化的字段
-                orderMap.put("status", OrderStatusConstant.ORDER_STATUS_CANCELED);
-
-                // 将更新后的Map重新序列化为JSON
-                String updatedOrderJson = objectMapper.writeValueAsString(orderMap);
-
-                // 存储更新后的订单信息并重置TTL为一天
-                stringRedisTemplate.opsForValue().set(redisKey, updatedOrderJson, 1, TimeUnit.DAYS);
-            } catch (Exception e) {
-                log.error("更新Redis中订单状态失败，订单号：{}", canceledResponse.getClOrderId(), e);
-            }
-        } else {
-            log.warn("Redis中未找到订单信息，订单号：{}", canceledResponse.getClOrderId());
+        //2.3 判断写redis是否成功
+        if (!cacheUpdated) {
+            log.warn("Redis缓存更新失败，订单ID：{}", canceledResponse.getClOrderId());
         }
 
         //3.使用RabbitMQ把订单信息发送到撮合系统，异步处理
@@ -84,14 +73,14 @@ public class orderCanceledServiceImpl extends ServiceImpl<orderMapper, Order> im
 //            );
 //            orderEventPublisherService.cancelOrderEvent(event);
 
-        //3.获取修改后的订单完整信息
+        //4.获取修改后的订单完整信息
         Order orderInfo = lambdaQuery()
                 .eq(Order::getClOrderId, canceledResponse.getClOrderId())
                 .one();
 
         BeanUtil.copyProperties(orderInfo, canceledResponse);
 
-        //4.返回结果
+        //5.返回结果
         return canceledResponse;
     }
 

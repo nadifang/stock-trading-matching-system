@@ -4,7 +4,7 @@ import lombok.Data;
 
 @Data
 public class OrderDTO {
-    private String orderId;
+    private String clOrderId;
     private String market;
     private String securityId;
     private String side;
