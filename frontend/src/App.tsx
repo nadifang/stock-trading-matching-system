@@ -319,6 +319,7 @@ export default function App() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
   const cancelingOrderIdsRef = useRef<Set<string>>(new Set());
+  const cancelPrevStatusRef = useRef<Map<string, OrderStatus>>(new Map());
 
   /** 下单表单状态。 */
   const [form, setForm] = useState<OrderForm>({
@@ -348,7 +349,7 @@ export default function App() {
    * 处理后端回报，转换为状态机事件。
    */
   const handleTradeReturn = useCallback((ret: TradeReturnVO) => {
-    const orderId = ret.clOrderId || ret.origClOrderId || "";
+    const orderId = ret.origClOrderId || ret.clOrderId || "";
     if (!orderId) return;
 
     const statusKey = (ret.status ?? "")
@@ -391,6 +392,10 @@ export default function App() {
         cancelingOrderIdsRef.current.delete(orderId);
       }
 
+      if (isFinalStatus(current.status)) {
+        return prev;
+      }
+
       if (isRejected) {
         nextOrder = {
           ...current,
@@ -399,6 +404,7 @@ export default function App() {
           errorCode: rejectRet.errorCode ?? ret.rejectCode ?? current.errorCode,
         };
       } else if (isCancelSuccess) {
+        cancelPrevStatusRef.current.delete(orderId);
         nextOrder = {
           ...current,
           status: OrderStatus.Canceled,
@@ -406,26 +412,30 @@ export default function App() {
           canceledQty: Math.max(0, current.qty - syncCumQty),
         };
       } else if (isCancelReject) {
+        const previousStatus = cancelPrevStatusRef.current.get(orderId);
         const rollbackStatus =
-          syncCumQty === 0
-            ? OrderStatus.Acked
-            : syncCumQty < current.qty
+          current.status === OrderStatus.Canceling
+            ? current.cumQty > 0
               ? OrderStatus.PartiallyFilled
-              : OrderStatus.Filled;
+              : previousStatus ?? current.status
+            : current.status;
+        cancelPrevStatusRef.current.delete(orderId);
 
         nextOrder = {
           ...current,
           status: rollbackStatus,
-          cumQty: syncCumQty,
+          cumQty: current.cumQty,
           canceledQty: rollbackStatus === OrderStatus.Filled ? 0 : current.canceledQty,
           errorMsg: rejectRet.errorMsg ?? current.errorMsg,
         };
       } else if (isExecutionRelated) {
-        if (current.status === OrderStatus.Canceled || current.status === OrderStatus.Rejected) {
-          return prev;
-        }
-
-        const nextCumQty = syncCumQty;
+        const nextCumQty = Math.max(
+          current.cumQty,
+          Math.max(
+            0,
+            Math.min(current.qty, ret.cumQty ?? (current.cumQty + (ret.execQty ?? 0)))
+          )
+        );
         const nextStatus =
           nextCumQty >= current.qty
             ? OrderStatus.Filled
@@ -547,18 +557,32 @@ export default function App() {
             setOrders((prev) =>
             prev.map((o) =>
                 o.clOrderId === newOrder.clOrderId
-                ? {
-                    ...o,
-                    status: frontendStatus,
-                    errorMsg:
-                      frontendStatus === OrderStatus.Rejected
-                        ? (respWithReject.rejectText ?? o.errorMsg)
-                        : o.errorMsg,
-                    errorCode:
-                      frontendStatus === OrderStatus.Rejected
-                        ? (respWithReject.rejectCode ?? o.errorCode)
-                        : o.errorCode,
-                  }
+                ? isFinalStatus(o.status)
+                  ? o
+                  : (() => {
+                      const currentPriority =
+                        o.status === OrderStatus.Canceling ? 3 : statusPriority[o.status];
+                      const nextPriority = statusPriority[frontendStatus];
+                      const isStatusRollback =
+                        currentPriority !== undefined &&
+                        nextPriority !== undefined &&
+                        nextPriority < currentPriority;
+                      if (isStatusRollback) {
+                        return o;
+                      }
+                      return {
+                        ...o,
+                        status: frontendStatus,
+                        errorMsg:
+                          frontendStatus === OrderStatus.Rejected
+                            ? (respWithReject.rejectText ?? o.errorMsg)
+                            : o.errorMsg,
+                        errorCode:
+                          frontendStatus === OrderStatus.Rejected
+                            ? (respWithReject.rejectCode ?? o.errorCode)
+                            : o.errorCode,
+                      };
+                    })()
                 : o
             )
             );
@@ -574,7 +598,9 @@ export default function App() {
       setOrders((prev) =>
         prev.map((o) =>
           o.clOrderId === newOrder.clOrderId
-            ? { ...o, status: OrderStatus.Rejected, errorMsg: msg }
+            ? isFinalStatus(o.status)
+              ? o
+              : { ...o, errorMsg: msg }
             : o
         )
       );
@@ -600,6 +626,7 @@ export default function App() {
     }
 
     cancelingOrderIdsRef.current.add(clOrderId);
+    cancelPrevStatusRef.current.set(clOrderId, originalStatus);
     emitOrderEvent(clOrderId, { type: "CANCEL_REQUEST" });
 
     const payload: CancelOrderDTO = {
@@ -614,24 +641,54 @@ export default function App() {
     };
 
     try {
-      const resp = (await api.cancelOrder(payload)) as
-        | { status?: string; rejectText?: string; rejectCode?: number }
-        | undefined;
+      const resp = await api.cancelOrder(payload);
 
       if (resp?.status?.trim().toUpperCase() === "REJECTED") {
         cancelingOrderIdsRef.current.delete(clOrderId);
+        const previousStatus = cancelPrevStatusRef.current.get(clOrderId);
+        cancelPrevStatusRef.current.delete(clOrderId);
         setOrders((prev) =>
           prev.map((o) =>
             o.clOrderId === clOrderId
-              ? {
-                  ...o,
-                  status: OrderStatus.Rejected,
-                  errorMsg: resp.rejectText ?? o.errorMsg,
-                  errorCode: resp.rejectCode ?? o.errorCode,
-                }
+              ? isFinalStatus(o.status)
+                ? o
+                : (() => {
+                    const stableStatus =
+                      o.status === OrderStatus.Canceling
+                        ? previousStatus ?? o.status
+                        : o.status;
+                    const currentStablePriority = statusPriority[stableStatus];
+                    const targetPriority = statusPriority[stableStatus];
+                    const rollbackStatus =
+                      currentStablePriority !== undefined &&
+                      targetPriority !== undefined &&
+                      targetPriority >= currentStablePriority
+                        ? stableStatus
+                        : o.status;
+                    return {
+                      ...o,
+                      status: rollbackStatus,
+                      canceledQty: o.canceledQty,
+                      errorMsg: resp.rejectText ?? o.errorMsg,
+                      errorCode: resp.rejectCode ?? o.errorCode,
+                    };
+                  })()
               : o
           )
         );
+      } else {
+        setTimeout(() => {
+          if (!cancelingOrderIdsRef.current.has(clOrderId)) return;
+          cancelingOrderIdsRef.current.delete(clOrderId);
+          cancelPrevStatusRef.current.delete(clOrderId);
+          setOrders((prev) =>
+            prev.map((o) =>
+              o.clOrderId === clOrderId && o.status === OrderStatus.Canceling
+                ? { ...o, status: originalStatus }
+                : o
+            )
+          );
+        }, 5000);
       }
     } catch (e: unknown) {
       let msg = "撤单失败";
@@ -641,6 +698,7 @@ export default function App() {
         msg = e;
       }
       cancelingOrderIdsRef.current.delete(clOrderId);
+      cancelPrevStatusRef.current.delete(clOrderId);
       setOrders((prev) =>
         prev.map((o) =>
           o.clOrderId === clOrderId && o.status === OrderStatus.Canceling
