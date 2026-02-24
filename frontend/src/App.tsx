@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api/client";
-import type { SubmitOrderDTO, TradeReturnVO } from "./types/server";
+import type { CancelOrderDTO, SubmitOrderDTO, TradeReturnVO } from "./types/server";
 import { connectTradeReturnWS, disconnectTradeReturnWS } from "./services/ws";
 
 /**
@@ -26,7 +26,7 @@ type OrderStatus = (typeof OrderStatus)[keyof typeof OrderStatus];
 type Side = "B" | "S";
 
 /**
- * 模拟回报事件类型。
+ * 订单回报事件类型。
  */
 type OrderEventType =
   | "ORDER_ACK"
@@ -60,6 +60,8 @@ interface Order {
   cumQty: number;
   execPrice: number;
   canceledQty?: number;
+  errorMsg?: string;
+  errorCode?: number;
 }
 
 /**
@@ -92,6 +94,106 @@ const isFinalStatus = (status: OrderStatus): boolean =>
   status === OrderStatus.Filled ||
   status === OrderStatus.Canceled ||
   status === OrderStatus.Rejected;
+
+const tradeReturnStatusMap: Record<string, OrderStatus> = {
+  PENDING: OrderStatus.Pending,
+  ACKED: OrderStatus.Acked,
+  ORDER_ACK: OrderStatus.Acked,
+  PARTIALLY_FILLED: OrderStatus.PartiallyFilled,
+  PARTIAL_FILLED: OrderStatus.PartiallyFilled,
+  ORDER_PARTIAL_FILL: OrderStatus.PartiallyFilled,
+  FILLED: OrderStatus.Filled,
+  ORDER_FILL: OrderStatus.Filled,
+  CANCELING: OrderStatus.Canceling,
+  CANCEL_REQUEST: OrderStatus.Canceling,
+  CANCELED: OrderStatus.Canceled,
+  CANCELLED: OrderStatus.Canceled,
+  CANCEL_ACK: OrderStatus.Canceled,
+  REJECTED: OrderStatus.Rejected,
+  REJECT: OrderStatus.Rejected,
+};
+
+const resolveOrderStatusFromTradeReturn = (status?: string): OrderStatus | null => {
+  if (!status) return null;
+  const key = status.trim().toUpperCase().replace(/[\s-]+/g, "_");
+  return tradeReturnStatusMap[key] ?? null;
+};
+
+const statusPriority: Partial<Record<OrderStatus, number>> = {
+  [OrderStatus.Pending]: 0,
+  [OrderStatus.Acked]: 1,
+  [OrderStatus.PartiallyFilled]: 2,
+  [OrderStatus.Filled]: 3,
+};
+
+const applyTradeReturnStatus = (
+  order: Order,
+  nextStatus: OrderStatus,
+  ret: TradeReturnVO
+): Order => {
+  if (isFinalStatus(order.status)) {
+    return order;
+  }
+
+  const newCumQty = Math.max(
+    order.cumQty,
+    ret.cumQty ?? (order.cumQty + (ret.execQty ?? 0))
+  );
+  const syncedCumQty = Math.max(0, Math.min(order.qty, newCumQty));
+
+  const currentPriority = statusPriority[order.status];
+  const nextPriority = statusPriority[nextStatus];
+  const canEvolveByPriority =
+    currentPriority === undefined ||
+    nextPriority === undefined ||
+    nextPriority >= currentPriority;
+
+  const shouldUpdateStatus =
+    canEvolveByPriority ||
+    nextStatus === OrderStatus.Canceling ||
+    nextStatus === OrderStatus.Canceled ||
+    nextStatus === OrderStatus.Rejected;
+
+  const baseOrder: Order = ret.execPrice !== undefined
+    ? { ...order, execPrice: ret.execPrice }
+    : order;
+  const rejectedOrder: Order = {
+    ...baseOrder,
+    status: OrderStatus.Rejected,
+    errorMsg: ret.rejectText ?? baseOrder.errorMsg,
+    errorCode: ret.rejectCode ?? baseOrder.errorCode,
+  };
+
+  switch (nextStatus) {
+    case OrderStatus.Pending:
+    case OrderStatus.Acked:
+    case OrderStatus.Canceling:
+      return shouldUpdateStatus ? { ...baseOrder, status: nextStatus } : baseOrder;
+    case OrderStatus.Rejected:
+      return shouldUpdateStatus ? rejectedOrder : baseOrder;
+    case OrderStatus.PartiallyFilled:
+      return shouldUpdateStatus
+        ? { ...baseOrder, status: OrderStatus.PartiallyFilled, cumQty: syncedCumQty }
+        : { ...baseOrder, cumQty: syncedCumQty };
+    case OrderStatus.Filled:
+      return {
+        ...baseOrder,
+        status: shouldUpdateStatus ? OrderStatus.Filled : baseOrder.status,
+        cumQty: Math.max(syncedCumQty, shouldUpdateStatus ? order.qty : syncedCumQty),
+        execPrice: ret.execPrice ?? baseOrder.execPrice ?? order.price,
+        canceledQty: 0,
+      };
+    case OrderStatus.Canceled:
+      return {
+        ...baseOrder,
+        status: shouldUpdateStatus ? OrderStatus.Canceled : baseOrder.status,
+        cumQty: syncedCumQty,
+        canceledQty: Math.max(0, order.qty - syncedCumQty),
+      };
+    default:
+      return baseOrder;
+  }
+};
 
 /**
  * 根据事件驱动订单状态流转。
@@ -208,13 +310,108 @@ const getStatusClassName = (status: OrderStatus): string => {
 };
 
 /**
- * 交易员终端主界面。
- */
+   * 交易员终端主界面。
+   */
 export default function App() {
   /** 订单列表状态。 */
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [orders, setOrders] = useState<Order[]>([
+    // 模拟数据：测试不同状态的订单
+    {
+      clOrderId: "TEST0000000001",
+      market: "XSHG",
+      securityId: "600030",
+      side: "B",
+      qty: 500,
+      price: 14.5,
+      shareholderId: "A123456789",
+      status: OrderStatus.Pending,
+      cumQty: 0,
+      execPrice: 0,
+      canceledQty: 0,
+    },
+    {
+      clOrderId: "TEST0000000002",
+      market: "XSHG",
+      securityId: "601888",
+      side: "S",
+      qty: 300,
+      price: 25.8,
+      shareholderId: "A123456789",
+      status: OrderStatus.Acked,
+      cumQty: 0,
+      execPrice: 0,
+      canceledQty: 0,
+    },
+    {
+      clOrderId: "TEST0000000003",
+      market: "XSHE",
+      securityId: "000858",
+      side: "B",
+      qty: 800,
+      price: 32.6,
+      shareholderId: "A123456789",
+      status: OrderStatus.PartiallyFilled,
+      cumQty: 450,
+      execPrice: 32.6,
+      canceledQty: 0,
+    },
+    {
+      clOrderId: "TEST0000000004",
+      market: "XSHG",
+      securityId: "600028",
+      side: "S",
+      qty: 200,
+      price: 7.2,
+      shareholderId: "A123456789",
+      status: OrderStatus.Filled,
+      cumQty: 200,
+      execPrice: 7.2,
+      canceledQty: 0,
+    },
+    {
+      clOrderId: "TEST0000000005",
+      market: "XSHG",
+      securityId: "601318",
+      side: "B",
+      qty: 1200,
+      price: 5.5,
+      shareholderId: "A123456789",
+      status: OrderStatus.Canceled,
+      cumQty: 0,
+      execPrice: 0,
+      canceledQty: 1200,
+    },
+    {
+      clOrderId: "TEST0000000006",
+      market: "XSHG",
+      securityId: "600519",
+      side: "B",
+      qty: 10,
+      price: 1780.0,
+      shareholderId: "A123456789",
+      status: OrderStatus.PartiallyFilled,
+      cumQty: 5,
+      execPrice: 1780.0,
+      canceledQty: 0,
+    },
+    {
+      clOrderId: "TEST0000000007",
+      market: "XSHE",
+      securityId: "000001",
+      side: "S",
+      qty: 600,
+      price: 16.8,
+      shareholderId: "A123456789",
+      status: OrderStatus.Filled,
+      cumQty: 600,
+      execPrice: 16.8,
+      canceledQty: 0,
+    },
+  ]);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [wsConnected, setWsConnected] = useState(false);
+  const cancelingOrderIdsRef = useRef<Set<string>>(new Set());
 
   /** 下单表单状态。 */
   const [form, setForm] = useState<OrderForm>({
@@ -241,109 +438,65 @@ export default function App() {
   }, []);
 
   /**
-   * 本地模拟回报（后端未联通时可用）。
-   * 支持已报 -> 部成 -> 全成，或已报 -> 全成两种路径。
-   */
-  const simulateBackendResponse = (order: Order): void => {
-    const { clOrderId, qty, price } = order;
-
-    setTimeout(() => {
-      emitOrderEvent(clOrderId, { type: "ORDER_ACK" });
-    }, 500);
-
-    const canPartial = qty > 1;
-    const usePartialPath = canPartial && Math.random() < 0.75;
-
-    if (usePartialPath) {
-      const partialQtyRaw = Math.floor(qty * (0.2 + Math.random() * 0.5));
-      const partialQty = Math.max(1, Math.min(qty - 1, partialQtyRaw));
-
-      setTimeout(() => {
-        emitOrderEvent(clOrderId, {
-          type: "ORDER_PARTIAL_FILL",
-          fillQty: partialQty,
-          fillPrice: price,
-        });
-      }, 1500);
-
-      setTimeout(() => {
-        emitOrderEvent(clOrderId, {
-          type: "ORDER_FILL",
-          fillPrice: price,
-        });
-      }, 2800);
-    } else {
-      setTimeout(() => {
-        emitOrderEvent(clOrderId, {
-          type: "ORDER_FILL",
-          fillPrice: price,
-        });
-      }, 1800);
-    }
-  };
-
-  /**
    * 处理后端回报，转换为状态机事件。
    */
   const handleTradeReturn = useCallback((ret: TradeReturnVO) => {
     const clId = ret.clOrderId || ret.origClOrderId || "";
     if (!clId) return;
+    const mappedStatus = resolveOrderStatusFromTradeReturn(ret.status);
+    if (!mappedStatus) return;
+
     setOrders((prev) => {
-      const o = prev.find((x) => x.clOrderId === clId);
-      if (!o) return prev;
-
-      // 非法/拒绝回报
-      if (ret.rejectCode || ret.rejectText) {
-        return prev.map((x) =>
-          x.clOrderId === clId ? { ...x, status: OrderStatus.Rejected } : x
-        );
-      }
-
-      // 撤单确认（假设 origClOrderId 非空且无成交即撤单）
-      if (!ret.execId && ret.origClOrderId) {
-        emitOrderEvent(clId, { type: "CANCEL_ACK" });
-        return prev;
-      }
-
-      // 成交类回报
-      const targetQty = typeof ret.execQty === "number" ? ret.execQty : 0;
-      if (targetQty <= 0) return prev;
-
-      if (targetQty < o.qty) {
-        const fillDelta = Math.max(0, targetQty - o.cumQty);
-        if (fillDelta > 0) {
-          emitOrderEvent(clId, {
-            type: "ORDER_PARTIAL_FILL",
-            fillQty: fillDelta,
-            fillPrice: ret.execPrice ?? o.execPrice ?? o.price,
-          });
-        }
-      } else {
-        emitOrderEvent(clId, {
-          type: "ORDER_FILL",
-          fillPrice: ret.execPrice ?? o.price,
-        });
-      }
-      return prev;
+      let changed = false;
+      const next = prev.map((o) => {
+        if (o.clOrderId !== clId) return o;
+        changed = true;
+        return applyTradeReturnStatus(o, mappedStatus, ret);
+      });
+      return changed ? next : prev;
     });
-  }, [emitOrderEvent]);
+  }, []);
 
   /**
    * 建立 WebSocket 订阅回报。
    */
   useEffect(() => {
     if (!currentUserId || wsBoundRef.current) return;
-    connectTradeReturnWS(currentUserId, handleTradeReturn);
+    
+    // 按照回调函数方案实现
+    connectTradeReturnWS({
+      userId: currentUserId,
+      handleTradeReturn: (ret) => {
+        // 直接调用回调函数，将解析好的VO对象传递给业务逻辑
+        handleTradeReturn(ret);
+      },
+      onStatusChange: (connected) => {
+        setWsConnected(connected);
+        console.log(`WebSocket connection status: ${connected ? 'connected' : 'disconnected'}`);
+      },
+    });
+    
     wsBoundRef.current = true;
     return () => {
       disconnectTradeReturnWS();
+      setWsConnected(false);
       wsBoundRef.current = false;
     };
   }, [currentUserId, handleTradeReturn]);
 
+  useEffect(() => {
+    const nextCancelingIds = new Set<string>();
+    for (const o of orders) {
+      if (o.status === OrderStatus.Canceling && cancelingOrderIdsRef.current.has(o.clOrderId)) {
+        nextCancelingIds.add(o.clOrderId);
+      }
+    }
+    cancelingOrderIdsRef.current = nextCancelingIds;
+  }, [orders]);
+
   /**
    * 提交新订单，调用后端 /trade。
-   * 若后端不可用则回退到本地模拟。
+   * 订单状态由后端回报驱动。
    */
   const submitOrder = async (): Promise<void> => {
     setErrorMsg(null);
@@ -369,9 +522,51 @@ export default function App() {
 
     setSubmitting(true);
     try {
-      await api.submitOrder(payload);
-      // 已报由后端回报驱动，这里本地先 ACK 提示
-      emitOrderEvent(newOrder.clOrderId, { type: "ORDER_ACK" });
+        const resp = await api.submitOrder(payload);  // 【修改】获取响应对象
+        // 处理后端返回的状态
+        if (resp.status) {
+            // 根据后端状态更新前端状态
+            let frontendStatus: OrderStatus = OrderStatus.Pending;  // 【修改】添加类型注解
+            switch (resp.status) {
+            case "PENDING":
+                frontendStatus = OrderStatus.Pending;
+                break;
+            case "ACKED":
+                frontendStatus = OrderStatus.Acked;
+                break;
+            case "PARTIALLY_FILLED":
+                frontendStatus = OrderStatus.PartiallyFilled;
+                break;
+            case "FILLED":
+                frontendStatus = OrderStatus.Filled;
+                break;
+            case "CANCELED":
+                frontendStatus = OrderStatus.Canceled;
+                break;
+            case "REJECTED":
+                frontendStatus = OrderStatus.Rejected;
+                break;
+            }
+            const respWithReject = resp as { rejectText?: string; rejectCode?: number };
+            setOrders((prev) =>
+            prev.map((o) =>
+                o.clOrderId === newOrder.clOrderId
+                ? {
+                    ...o,
+                    status: frontendStatus,
+                    errorMsg:
+                      frontendStatus === OrderStatus.Rejected
+                        ? (respWithReject.rejectText ?? o.errorMsg)
+                        : o.errorMsg,
+                    errorCode:
+                      frontendStatus === OrderStatus.Rejected
+                        ? (respWithReject.rejectCode ?? o.errorCode)
+                        : o.errorCode,
+                  }
+                : o
+            )
+            );
+        }
     } catch (e: unknown) {
       let msg = "下单失败";
       if (e instanceof Error) {
@@ -383,26 +578,82 @@ export default function App() {
       setOrders((prev) =>
         prev.map((o) =>
           o.clOrderId === newOrder.clOrderId
-            ? { ...o, status: OrderStatus.Rejected }
+            ? { ...o, status: OrderStatus.Rejected, errorMsg: msg }
             : o
         )
       );
-      // 回退到本地模拟，便于演示
-      simulateBackendResponse(newOrder);
     } finally {
       setSubmitting(false);
     }
   };
 
   /**
-   * 发起撤单并延迟模拟撤单确认回报。
+   * 发起撤单请求，状态由后端回报驱动。
    */
-  const handleCancel = (origOrder: Order): void => {
-    emitOrderEvent(origOrder.clOrderId, { type: "CANCEL_REQUEST" });
+  const handleCancel = async (origOrder: Order): Promise<void> => {
+    setErrorMsg(null);
+    const clOrderId = origOrder.clOrderId;
+    const latestOrder = orders.find((o) => o.clOrderId === clOrderId) ?? origOrder;
+    const originalStatus = latestOrder.status;
 
-    setTimeout(() => {
-      emitOrderEvent(origOrder.clOrderId, { type: "CANCEL_ACK" });
-    }, 1000);
+    if (
+      originalStatus === OrderStatus.Canceling ||
+      cancelingOrderIdsRef.current.has(clOrderId)
+    ) {
+      return;
+    }
+
+    cancelingOrderIdsRef.current.add(clOrderId);
+    emitOrderEvent(clOrderId, { type: "CANCEL_REQUEST" });
+
+    const payload: CancelOrderDTO = {
+      clOrderId: generateId(),
+      origClOrderId: clOrderId,
+      market: origOrder.market,
+      securityId: origOrder.securityId,
+      side: origOrder.side,
+      qty: origOrder.qty,
+      price: origOrder.price,
+      shareholderId: origOrder.shareholderId,
+    };
+
+    try {
+      const resp = (await api.cancelOrder(payload)) as
+        | { status?: string; rejectText?: string; rejectCode?: number }
+        | undefined;
+
+      if (resp?.status?.trim().toUpperCase() === "REJECTED") {
+        cancelingOrderIdsRef.current.delete(clOrderId);
+        setOrders((prev) =>
+          prev.map((o) =>
+            o.clOrderId === clOrderId
+              ? {
+                  ...o,
+                  status: OrderStatus.Rejected,
+                  errorMsg: resp.rejectText ?? o.errorMsg,
+                  errorCode: resp.rejectCode ?? o.errorCode,
+                }
+              : o
+          )
+        );
+      }
+    } catch (e: unknown) {
+      let msg = "撤单失败";
+      if (e instanceof Error) {
+        msg = e.message;
+      } else if (typeof e === "string") {
+        msg = e;
+      }
+      cancelingOrderIdsRef.current.delete(clOrderId);
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.clOrderId === clOrderId && o.status === OrderStatus.Canceling
+            ? { ...o, status: originalStatus }
+            : o
+        )
+      );
+      setErrorMsg(msg);
+    }
   };
 
   /**
@@ -415,7 +666,13 @@ export default function App() {
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
-      <h1 className="text-2xl font-bold mb-6 text-blue-800">交易员终端 - 模拟交易对敲系统</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold text-blue-800">交易员终端 - 模拟交易对敲系统</h1>
+        <div className={`flex items-center px-3 py-1 rounded-full text-sm ${wsConnected ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+          <span className={`w-2 h-2 rounded-full mr-2 ${wsConnected ? 'bg-green-500' : 'bg-red-500'}`}></span>
+          {wsConnected ? 'WebSocket已连接' : 'WebSocket未连接'}
+        </div>
+      </div>
 
       <div className="bg-white p-4 rounded-lg shadow mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="flex flex-col">

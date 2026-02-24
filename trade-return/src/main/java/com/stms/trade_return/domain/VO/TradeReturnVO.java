@@ -17,6 +17,7 @@ public class TradeReturnVO {
     private double price;                               //价格
     private char[] shareholderId;                       //股东ID
 
+
     /**
      * 成交的唯一编号
      */

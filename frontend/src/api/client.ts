@@ -1,9 +1,6 @@
-import type { Result, SubmitOrderDTO } from "../types/server";
+import type { CancelOrderDTO, Result, SubmitOrderDTO } from "../types/server";
 
-const BASE_URL =
-  (typeof import.meta !== "undefined" &&
-    (import.meta as any).env?.VITE_API_BASE) ||
-  "/api";
+const BASE_URL = import.meta.env?.VITE_API_BASE || "/api";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${url}`, {
@@ -36,11 +33,18 @@ export interface SubmitOrderResp {
   qty: number;
   price: number;
   shareholderId: string;
+  status?: string;//添加status字段
 }
 
 export const api = {
   submitOrder(dto: SubmitOrderDTO) {
     return request<SubmitOrderResp>("/trade", {
+      method: "POST",
+      body: JSON.stringify(dto),
+    });
+  },
+  cancelOrder(dto: CancelOrderDTO) {
+    return request<void>("/trade/cancel", {
       method: "POST",
       body: JSON.stringify(dto),
     });

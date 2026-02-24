@@ -6,6 +6,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stms.common.constant.OrderIllegalCodeConstant;
 import com.stms.common.constant.OrderIllegalReasonConstant;
+import com.stms.common.constant.OrderStatusConstant;
+import com.stms.common.constant.RedisConstant;
 import com.stms.trade.domain.dto.orderDTO;
 import com.stms.trade.domain.entity.Order;
 import com.stms.trade.mapper.orderMapper;
@@ -13,21 +15,67 @@ import com.stms.trade.service.OrderEventPublisherService;
 import com.stms.trade.service.orderService;
 import com.stms.trade.task.OrderCreatedEvent;
 import com.stms.trade.utils.TradeRespose;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
+import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @Service
 public class orderServiceImpl extends ServiceImpl<orderMapper, Order> implements orderService{
 
     @Resource
-    private KafkaTemplate<String, String> kafkaTemplate;
-    @Resource
-    private ObjectMapper objectMapper;
-    @Resource
     private OrderEventPublisherService orderEventPublisherService;
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
+
+    private static final DefaultRedisScript<Long> ORDER_SUBMIT_SCRIPT ;       //声明lua脚本
+    static {
+        ORDER_SUBMIT_SCRIPT = new DefaultRedisScript<>();
+        ORDER_SUBMIT_SCRIPT.setLocation(new ClassPathResource("create_order.lua"));      // 指定lua脚本位置
+        ORDER_SUBMIT_SCRIPT.setResultType(Long.class);
+    }
+
+    //创建阻塞队列
+    private BlockingQueue<Order> orderTasks = new ArrayBlockingQueue<>(1024 * 1024);
+
+    //创建了一个单线程的、专门用于执行“创建订单”任务的后台线程池
+    private static final ExecutorService ORDER_SUBMIT_EXECUTOR = Executors.newSingleThreadExecutor();
+
+    //初始化，在实现类创建的时候就开始执行
+    @PostConstruct
+    public void init() {
+        ORDER_SUBMIT_EXECUTOR.submit(new OrderHandler());
+    }
+
+    private class OrderHandler implements Runnable{
+        @Override
+        public void run() {
+            while(true) {
+                try {
+                    //获取队列中的订单信息
+                    Order orderCommand = orderTasks.take();
+                    //创建订单
+                    handleOrder(orderCommand);
+                } catch (InterruptedException e) {
+                    log.error("处理订单异常");
+                }
+            }
+        }
+    }
+
 
     @Override
     public TradeRespose submitOrder(orderDTO order) {
@@ -42,19 +90,47 @@ public class orderServiceImpl extends ServiceImpl<orderMapper, Order> implements
         //3.订单入库
         if(tradeRespose.isSuccess()){
 
-            save(orderCommand);
+            //3.1 设置订单状态信息为待处理
+            orderCommand.setStatus(OrderStatusConstant.ORDER_STATUS_PENDING);
+
+            //3.2 执行Lua脚本，在Redis中创建订单信息
+            String redisKey = RedisConstant.ORDER_STATUS_KEY + orderCommand.getClOrderId();
+            // 构建订单信息的参数列表（排除id字段）
+            List<String> args = new ArrayList<>();
+            args.add(orderCommand.getClOrderId());
+            args.add(orderCommand.getMarket());
+            args.add(orderCommand.getSecurityId());
+            args.add(orderCommand.getSide());
+            args.add(String.valueOf(orderCommand.getQty()));
+            args.add(String.valueOf(orderCommand.getPrice()));
+            args.add(orderCommand.getShareholderId());
+            args.add(OrderStatusConstant.ORDER_STATUS_PENDING);
+
+            Long result = stringRedisTemplate.execute(
+                    ORDER_SUBMIT_SCRIPT,  // 注入的Lua脚本
+                    Collections.singletonList(redisKey),
+                    args.toArray(new String[0])
+            );
+
+            //3.3 判断Lua执行结果
+            if (result == null || result != 1) {
+                // Lua 脚本执行失败（重复订单）
+                return TradeRespose.fail(OrderIllegalCodeConstant.ORDER_EXISTED,OrderIllegalReasonConstant.ORDER_EXISTED_REASON);
+            }
+
+            orderTasks.add(orderCommand);
 
             //4.使用RabbitMQ把订单数据发送到模拟风控系统，异步处理
-            OrderCreatedEvent event = new OrderCreatedEvent(
-                    orderCommand.getClOrderId(),
-                    orderCommand.getMarket(),
-                    orderCommand.getSecurityId(),
-                    orderCommand.getSide(),
-                    orderCommand.getQty(),
-                    orderCommand.getPrice(),
-                    orderCommand.getShareholderId()
-            );
-            orderEventPublisherService.publishOrderCreatedEvent(event);
+//            OrderCreatedEvent event = new OrderCreatedEvent(
+//                    orderCommand.getClOrderId(),
+//                    orderCommand.getMarket(),
+//                    orderCommand.getSecurityId(),
+//                    orderCommand.getSide(),
+//                    orderCommand.getQty(),
+//                    orderCommand.getPrice(),
+//                    orderCommand.getShareholderId()
+//            );
+//            orderEventPublisherService.publishOrderCreatedEvent(event);
         }
 
         //5.返回订单
@@ -97,5 +173,9 @@ public class orderServiceImpl extends ServiceImpl<orderMapper, Order> implements
         String side = order.getSide() != null ? new String(order.getSide()) : null;
         String shareholderId = order.getShareholderId() != null ? new String(order.getShareholderId()) : null;
         return new Order(clOrderId, market, securityId, side, order.getQty(), order.getPrice(), shareholderId);
+    }
+
+    private void handleOrder(Order orderCommand) {
+        save(orderCommand);
     }
 }

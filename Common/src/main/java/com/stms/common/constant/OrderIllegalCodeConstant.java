@@ -20,4 +20,6 @@ public class OrderIllegalCodeConstant {
     public static final int PRICE_ILLEGAL = 1007;
 
     public static final int SHAREHOLDER_ID_ILLEGAL = 1008;
+
+    public static final int ORDER_EXISTED = 1009;
 }

@@ -9,10 +9,12 @@ export interface TradeReturnVO {
   clOrderId: string;
   market: string;
   securityId: string;
+  status?: string;
   side: "B" | "S" | "BUY" | "SELL";
   qty: number;
   price: number;
   shareholderId: string;
+  cumQty?: number;
   execId?: string;
   execQty?: number;
   execPrice?: number;
@@ -23,6 +25,17 @@ export interface TradeReturnVO {
 
 export interface SubmitOrderDTO {
   clOrderId: string;
+  market: string;
+  securityId: string;
+  side: "B" | "S";
+  qty: number;
+  price: number;
+  shareholderId: string;
+}
+
+export interface CancelOrderDTO {
+  clOrderId: string;
+  origClOrderId: string;
   market: string;
   securityId: string;
   side: "B" | "S";
