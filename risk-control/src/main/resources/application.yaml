@@ -1,0 +1,14 @@
+spring:
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+
+rabbitmq:
+  queue:
+    order: risk.order.queue          # 监听的订单队列
+  exchange:
+    return: risk.return.exchange     # 回报交换机
+  routing key:
+    return: risk.return.key          # 回报路由键

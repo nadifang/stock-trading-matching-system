@@ -38,7 +38,7 @@ export interface SubmitOrderResp {
 
 export const api = {
   submitOrder(dto: SubmitOrderDTO) {
-    return request<SubmitOrderResp>("/trade", {
+    return request<SubmitOrderResp>("/trade/submit", {
       method: "POST",
       body: JSON.stringify(dto),
     });
