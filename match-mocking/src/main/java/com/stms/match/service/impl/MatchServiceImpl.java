@@ -28,7 +28,7 @@ public class MatchServiceImpl extends ServiceImpl<TransactionMapper, Transaction
     private final ConcurrentHashMap<String, OrderBook> orderBooks = new ConcurrentHashMap<>();
 
     @Resource
-    private StringRedisTemplate redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
 
     @Resource
     private ObjectMapper objectMapper;
@@ -38,7 +38,7 @@ public class MatchServiceImpl extends ServiceImpl<TransactionMapper, Transaction
 
     @Override
     public void processOrder(OrderDTO order) {
-        String orderJson = redisTemplate.opsForValue().get(RedisConstant.ORDER_STATUS_KEY + order.getClOrderId());
+        String orderJson = stringRedisTemplate.opsForValue().get(RedisConstant.ORDER_STATUS_KEY + order.getClOrderId());
 
         if (orderJson != null && !orderJson.trim().isEmpty()) {
             try {
@@ -86,12 +86,24 @@ public class MatchServiceImpl extends ServiceImpl<TransactionMapper, Transaction
         synchronized (book) {
             MatchingOrder target = book.orderIndex.get(cancelDTO.getOrigClOrderId());
             if (target != null && target.getRemQty() > 0 && !target.isCanceled()) {
+                Long canceledQty = target.getRemQty();
                 target.setCanceled(true);
+                target.setRemQty(0L);
                 book.orderIndex.remove(orderId);
-            }
-            return true;
-        }
 
+                try {
+                    // 1. 同步到数据库
+                    tradeSyncDatabaseService.syncCancelToDatabase(orderId, canceledQty);
+                    // 2. 同步更新Redis缓存
+                    updateRedisAfterCancel(orderId, canceledQty);
+                    return true;
+                } catch (Exception e) {
+                    System.out.println("撤单状态同步异常 | 订单ID: " + orderId + ", 异常: " + e.getMessage());
+                    return false;
+                }
+            }
+            return false;
+        }
     }
 
     private void matchOrder(OrderBook book, MatchingOrder takerOrder, boolean isBuy) {
@@ -169,7 +181,7 @@ public class MatchServiceImpl extends ServiceImpl<TransactionMapper, Transaction
 
     private void updateRedisAfterTrade(MatchingOrder order, Long execQty, Double execPrice) {
         String statusKey = RedisConstant.ORDER_STATUS_KEY + order.getOrderDTO().getClOrderId();
-        String orderJson = redisTemplate.opsForValue().get(statusKey);
+        String orderJson = stringRedisTemplate.opsForValue().get(statusKey);
 
         if (orderJson != null && !orderJson.isEmpty()) {
             try {
@@ -195,10 +207,36 @@ public class MatchServiceImpl extends ServiceImpl<TransactionMapper, Transaction
 
                 // 4. 将更新后的Map重新序列化为JSON，并写回Redis（重置过期时间为1天）
                 String updatedOrderJson = objectMapper.writeValueAsString(orderMap);
-                redisTemplate.opsForValue().set(statusKey, updatedOrderJson, 1, java.util.concurrent.TimeUnit.DAYS);
+                stringRedisTemplate.opsForValue().set(statusKey, updatedOrderJson, 1, java.util.concurrent.TimeUnit.DAYS);
 
             } catch (Exception e) {
                 System.out.println("更新Redis订单状态失败，订单号：" + order.getOrderDTO().getClOrderId() + "，异常：" + e.getMessage());
+            }
+        }
+    }
+
+    private void updateRedisAfterCancel(String orderId, Long canceledQty) {
+        String statusKey = RedisConstant.ORDER_STATUS_KEY + orderId;
+        String orderJson = stringRedisTemplate.opsForValue().get(statusKey);
+
+        if (orderJson != null && !orderJson.isEmpty()) {
+            try {
+                // 1. 解析 JSON 为 Map
+                Map<String, Object> orderMap = objectMapper.readValue(orderJson, new TypeReference<>() {
+                });
+
+                // 2. 更新撤单相关字段
+                orderMap.put("status", OrderStatusConstant.ORDER_STATUS_CANCELED);
+                orderMap.put("remaining_qty", 0);
+
+                long currentCanceledQty = Long.parseLong(String.valueOf(orderMap.getOrDefault("canceled_qty", 0)));
+                orderMap.put("canceled_qty", currentCanceledQty + canceledQty);
+
+                // 3. 写回Redis
+                String updatedOrderJson = objectMapper.writeValueAsString(orderMap);
+                stringRedisTemplate.opsForValue().set(statusKey, updatedOrderJson, 1, java.util.concurrent.TimeUnit.DAYS);
+            } catch (Exception e) {
+                System.out.println("更新Redis订单撤单状态失败，订单号：" + orderId + "，异常：" + e.getMessage());
             }
         }
     }

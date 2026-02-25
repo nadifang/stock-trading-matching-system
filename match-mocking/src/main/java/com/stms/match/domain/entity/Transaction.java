@@ -1,5 +1,6 @@
 package com.stms.match.domain.entity;
 
+import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.AllArgsConstructor;
@@ -12,7 +13,7 @@ import lombok.NoArgsConstructor;
 @TableName("tb_transaction")
 public class Transaction {
 
-    @TableId("value = id, type = IdType.AUTO")
+    @TableId(value = "id", type = IdType.AUTO)
     private Long id;
 
     private String execId;

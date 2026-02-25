@@ -8,17 +8,18 @@ import com.stms.match.mapper.OrderMapper;
 import com.stms.match.mapper.TransactionMapper;
 import com.stms.match.service.TradeSyncDatabaseService;
 import com.stms.match.utils.MatchingOrder;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import javax.annotation.Resource;
 
 @Service
 public class TradeSyncDatabaseServiceImpl implements TradeSyncDatabaseService {
 
-    @Autowired
+    @Resource
     private TransactionMapper transactionMapper;
 
-    @Autowired
+    @Resource
     private OrderMapper orderMapper;
 
     @Transactional(rollbackFor = Exception.class)
@@ -54,6 +55,19 @@ public class TradeSyncDatabaseServiceImpl implements TradeSyncDatabaseService {
         );
 
         return rows > 0;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    @Override
+    public void syncCancelToDatabase(String orderId, Long canceledQty) {
+        orderMapper.update(null, new LambdaUpdateWrapper<Order>()
+                .eq(Order::getClOrderId, orderId)
+                .ge(Order::getRemainingQty, canceledQty)
+                // 增加已撤数量 (IFNULL防止数据库默认为null的情况报错)
+                .setSql("canceled_qty = IFNULL(canceled_qty, 0) + " + canceledQty)
+                // 扣减剩余数量
+                .setSql("remaining_qty = remaining_qty - " + canceledQty)
+        );
     }
 
 }
