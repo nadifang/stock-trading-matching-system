@@ -36,6 +36,12 @@ export interface SubmitOrderResp {
   status?: string;//添加status字段
 }
 
+export interface CancelOrderResp {
+  status?: string;
+  rejectText?: string;
+  rejectCode?: number;
+}
+
 export const api = {
   submitOrder(dto: SubmitOrderDTO) {
     return request<SubmitOrderResp>("/trade/submit", {
@@ -44,10 +50,9 @@ export const api = {
     });
   },
   cancelOrder(dto: CancelOrderDTO) {
-    return request<void>("/trade/cancel", {
+    return request<CancelOrderResp>("/trade/cancel", {
       method: "POST",
       body: JSON.stringify(dto),
     });
   },
 };
-

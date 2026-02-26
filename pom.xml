@@ -12,10 +12,11 @@
         <module>trade-transmitting</module>
         <module>risk-control</module>
         <module>match-mocking</module>
-        <module>Gateway</module>
         <module>Common</module>
         <module>stms-service</module>
         <module>trade-return</module>
+        <module>trade_query</module>
+        <module>Gateway</module>
     </modules>
 
     <parent>

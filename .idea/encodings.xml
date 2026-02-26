@@ -11,5 +11,6 @@
     <file url="file://$PROJECT_DIR$/stms-service/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/trade-return/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/trade-transmitting/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/trade_query/src/main/java" charset="UTF-8" />
   </component>
 </project>
