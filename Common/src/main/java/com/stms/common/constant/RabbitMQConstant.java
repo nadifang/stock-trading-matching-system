@@ -19,4 +19,7 @@ public class RabbitMQConstant {
 
     // 撤单路由键
     public static final String CANCEL_ROUTING_KEY = "order.canceled";
+
+    public static final String TRADE_EXCHANGE = "trade.exchange";
+
 }
