@@ -1,9 +1,10 @@
 package com.stms.trade_return.Listener;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.stms.common.constant.RabbitMQConstant;
 import com.stms.trade_return.Utils.TradeReturnCommand;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
 
@@ -11,7 +12,7 @@ import javax.annotation.Resource;
 
 @Slf4j
 @Component
-public class ReturnMessageListener {
+public class RiskReturnMessageListener {
 
     //WebSocket 推送工具
     @Resource
@@ -19,7 +20,8 @@ public class ReturnMessageListener {
     @Resource
     private ObjectMapper objectMapper;
 
-    @KafkaListener(topics = "trade.return.out", groupId = "return-group")
+
+    @RabbitListener(queues = RabbitMQConstant.RISK_RETURN_QUEUE_NAME)
     public void listenReturnMessage(String message) {
         try {
             log.info("收到回报消息: {}", message);
