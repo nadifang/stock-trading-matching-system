@@ -48,7 +48,7 @@ class TradeSyncDatabaseServiceImplTest {
         dbBuyOrder.setQty(200L);
         dbBuyOrder.setRemainingQty(200L); // 初始剩余200
         dbBuyOrder.setCumQty(0L);
-        dbBuyOrder.setTradedAmount(0L);
+        dbBuyOrder.setTradedAmount(0);
         dbBuyOrder.setStatus(OrderStatusConstant.ORDER_STATUS_PENDING);
         orderMapper.insert(dbBuyOrder);
 

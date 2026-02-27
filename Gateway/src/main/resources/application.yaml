@@ -3,6 +3,9 @@ server:
 spring:
   application:
     name: gateway
+  output:
+    ansi:
+      enabled: always
   datasource:
     url: jdbc:mysql://mysql6.sqlpub.com:3311/stock_trade?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=UTC
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -26,20 +29,5 @@ spring:
   jackson:
     default-property-inclusion: non_null # JSON处理时忽略非空字段
   cloud:
-    gateway:
-      routes:
-        # 交易转发模块
-        - id: trade-transmitting
-          uri: lb://trade-transmitting
-          predicates:
-            - Path=/api/trade/**
-          filters:
-            - StripPrefix=2
-
-        # 订单查询模块
-        - id: trade-query
-          uri: lb://trade-query
-          predicates:
-            - Path=/api/query/**
-          filters:
-            - StripPrefix=2
+    config:
+      uri: http://localhost:8888

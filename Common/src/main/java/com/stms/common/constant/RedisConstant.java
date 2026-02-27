@@ -5,7 +5,7 @@ public class RedisConstant {
     public static final String ORDER_STATUS_KEY = "order:status:";
 
     // 空值缓存标记
-    public static final String EMPTY_VALUE = null;
+    public static final String EMPTY_VALUE = "_EMPTY_";
 
     // 空值缓存 TTL（5分钟）
     public static final long EMPTY_CACHE_TTL = 300;
