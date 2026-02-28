@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react'
 
 // https://vite.dev/config/
 export default defineConfig({
+  // 将 base 设置为相对路径 './' 
+  // 这样打包后的 index.html 引用资源时会使用 ./assets/，兼容性最强
+  base: './', 
   plugins: [react()],
   server: {
     proxy: {
