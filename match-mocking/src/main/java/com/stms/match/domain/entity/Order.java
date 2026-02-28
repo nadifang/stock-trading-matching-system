@@ -84,5 +84,5 @@ public class Order {
      * 累计成交金额
      */
     @TableField("traded_amount")
-    private Long tradedAmount;
+    private double tradedAmount;
 }

@@ -4,11 +4,14 @@ import cn.hutool.core.bean.BeanUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.stms.common.constant.DateConstant;
 import com.stms.common.constant.OrderStatusConstant;
 import com.stms.common.constant.RedisConstant;
 import com.stms.trade.domain.dto.orderCanceledDTO;
+import com.stms.trade.domain.entity.Cancel_Order;
 import com.stms.trade.domain.entity.Order;
 import com.stms.trade.mapper.orderMapper;
+import com.stms.trade.service.CancelService;
 import com.stms.trade.service.RedisSecurityService;
 import com.stms.trade.service.orderCanceledService;
 import com.stms.trade.utils.CanceledResponse;
@@ -19,6 +22,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Map;
 
 @Slf4j
@@ -31,6 +36,8 @@ public class orderCanceledServiceImpl extends ServiceImpl<orderMapper, Order> im
     private StringRedisTemplate stringRedisTemplate;
     @Resource
     private ObjectMapper objectMapper;
+    @Resource
+    private CancelService cancelService;
 
     @Override
     @Transactional
@@ -40,18 +47,18 @@ public class orderCanceledServiceImpl extends ServiceImpl<orderMapper, Order> im
         CanceledResponse canceledResponse = convertToOrderCommand(order);
 
         //2.修改订单状态
-        //2.1 修改数据库订单状态
+        //2.1 判断数据库中订单是否还未撮合
         boolean order_pending = lambdaQuery()
                 .eq(Order::getClOrderId, canceledResponse.getOrigClOrderId())
                 .eq(Order::getStatus, OrderStatusConstant.ORDER_STATUS_PENDING)
                 .count() > 0;
+        //2.2 修改数据库订单状态
         if (order_pending) {
             lambdaUpdate().eq(Order::getClOrderId, canceledResponse.getOrigClOrderId())
                     .set(Order::getStatus, OrderStatusConstant.ORDER_STATUS_CANCELED)
                     .update();
         }
-
-        //2.2 修改redis中订单状态
+        //2.3 修改redis中订单状态
         boolean cacheUpdated = redisSecurityService.updateOrderStatusWithProtection(
                 canceledResponse.getOrigClOrderId(),
                 OrderStatusConstant.ORDER_STATUS_CANCELED,
@@ -104,6 +111,13 @@ public class orderCanceledServiceImpl extends ServiceImpl<orderMapper, Order> im
         }
 
         BeanUtil.copyProperties(orderInfo, canceledResponse,"clOrderId");
+        canceledResponse.setCanceledQty(canceledResponse.getQty() - canceledResponse.getCumQty());
+
+        //4.2 写撤单表
+        Cancel_Order cancel_order = new Cancel_Order();
+        BeanUtil.copyProperties(canceledResponse, cancel_order);
+        cancel_order.setCancelTime(LocalDateTime.now().format(DateTimeFormatter.ofPattern(DateConstant.DEFAULT_DATE_TIME_FORMAT)));
+        cancelService.cancelOrder(cancel_order);
 
         //5.返回结果
         return canceledResponse;

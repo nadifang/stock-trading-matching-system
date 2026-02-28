@@ -17,6 +17,7 @@
         <module>trade-return</module>
         <module>trade_query</module>
         <module>Gateway</module>
+        <module>dotest</module>
     </modules>
 
     <parent>

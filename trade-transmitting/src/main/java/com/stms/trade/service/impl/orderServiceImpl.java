@@ -140,16 +140,16 @@ public class orderServiceImpl extends ServiceImpl<orderMapper, Order> implements
             }
 
             //5.使用RabbitMQ把订单数据发送到模拟风控系统，异步处理
-//            OrderCreatedEvent event = new OrderCreatedEvent(
-//                    orderCommand.getClOrderId(),
-//                    orderCommand.getMarket(),
-//                    orderCommand.getSecurityId(),
-//                    orderCommand.getSide(),
-//                    orderCommand.getQty(),
-//                    orderCommand.getPrice(),
-//                    orderCommand.getShareholderId()
-//            );
-//            orderEventPublisherService.publishOrderCreatedEvent(event);
+            OrderCreatedEvent event = new OrderCreatedEvent(
+                    orderCommand.getClOrderId(),
+                    orderCommand.getMarket(),
+                    orderCommand.getSecurityId(),
+                    orderCommand.getSide(),
+                    orderCommand.getQty(),
+                    orderCommand.getPrice(),
+                    orderCommand.getShareholderId()
+            );
+            orderEventPublisherService.publishOrderCreatedEvent(event);
         }
 
         //6.返回订单
@@ -196,5 +196,12 @@ public class orderServiceImpl extends ServiceImpl<orderMapper, Order> implements
 
     private void handleOrder(Order orderCommand) {
         save(orderCommand);
+        lambdaUpdate()
+                .eq(Order::getClOrderId, orderCommand.getClOrderId())
+                .set(Order::getCanceledQty, 0L)
+                .set(Order::getCumQty, 0L)
+                .set(Order::getRemainingQty, orderCommand.getQty())
+                .set(Order::getTradedAmount, 0.0)
+                .update();
     }
 }

@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit;
 
 @Service
 @Slf4j
-public class CacheProtectionServiceImpl implements CacheProtectionService{
+    public class CacheProtectionServiceImpl implements CacheProtectionService{
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;

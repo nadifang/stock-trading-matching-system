@@ -1,6 +1,7 @@
 package com.stms.query.domain.vo;
 
 import com.baomidou.mybatisplus.annotation.TableField;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -40,6 +41,7 @@ public class OrderDetailVO {
     /**
      * 剩余订单数量
      */
+    @JsonProperty("remaining_qty")
     private Long remainingQty;
 
     public OrderDetailVO(OrderDetailVO orderById) {
