@@ -1,33 +1,31 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api/client";
 import type { CancelOrderDTO, SubmitOrderDTO, TradeReturnVO } from "./types/server";
 import { connectTradeReturnWS, disconnectTradeReturnWS } from "./services/ws";
+import BannerSection from "./components/BannerSection";
+import TopHeader from "./components/TopHeader";
 
 /**
  * 订单状态枚举。
- * 使用受控枚举替代自由字符串，避免状态值拼写错误和非法流转。
+ * 使用受控常量代替自由字符串，避免拼写错误与非法状态流转。
  */
 const OrderStatus = {
-  Pending: "待报",
-  Acked: "已报",
-  PartiallyFilled: "部成",
-  Filled: "全成",
-  Canceling: "撤单中",
-  Canceled: "已撤单",
-  Rejected: "废单",
+  Pending: "Pending",
+  Acked: "Acked",
+  PartiallyFilled: "Partially Filled",
+  Filled: "Filled",
+  Canceling: "Canceling",
+  Canceled: "Canceled",
+  Rejected: "Rejected",
 } as const;
 
 type OrderStatus = (typeof OrderStatus)[keyof typeof OrderStatus];
 
 
-/**
- * 买卖方向。
- */
+/** 买卖方向。 */
 type Side = "B" | "S";
 
-/**
- * 订单回报事件类型。
- */
+/** 订单回报事件类型。 */
 type OrderEventType =
   | "ORDER_ACK"
   | "ORDER_PARTIAL_FILL"
@@ -37,7 +35,7 @@ type OrderEventType =
 
 /**
  * 状态机输入事件。
- * 部分成交和全成事件可携带成交价/成交量。
+ * 部成/全成事件可携带成交数量与成交价格。
  */
 interface SomeEventType {
   type: OrderEventType;
@@ -45,9 +43,7 @@ interface SomeEventType {
   fillPrice?: number;
 }
 
-/**
- * 订单实体。
- */
+/** 前端订单实体。 */
 interface Order {
   clOrderId: string;
   market: string;
@@ -64,9 +60,7 @@ interface Order {
   errorCode?: number;
 }
 
-/**
- * 下单表单数据。
- */
+/** 下单表单数据。 */
 interface OrderForm {
   market: string;
   securityId: string;
@@ -76,9 +70,7 @@ interface OrderForm {
   shareholderId: string;
 }
 
-/**
- * 生成客户端订单号。
- */
+/** 生成客户端订单号。 */
 const generateId = (): string => {
   const now = Date.now().toString();
   const rand = Math.floor(Math.random() * 1e8)
@@ -87,9 +79,7 @@ const generateId = (): string => {
   return (now + rand).slice(-16);
 };
 
-/**
- * 判断订单是否已进入终态。
- */
+/** 判断订单是否已进入终态。 */
 const isFinalStatus = (status: OrderStatus): boolean =>
   status === OrderStatus.Filled ||
   status === OrderStatus.Canceled ||
@@ -196,13 +186,13 @@ const applyTradeReturnStatus = (
 };
 
 /**
- * 根据事件驱动订单状态流转。
+ * 按事件驱动订单状态流转。
  *
- * 业务规则：
- * 1. 部分成交：cumQty < qty => 部成。
- * 2. 全部成交：cumQty == qty => 全成。
- * 3. 已撤单后不再进入任何成交态。
- * 4. 撤单回报会计算剩余撤销量。
+ * 规则：
+ * 1. cumQty < qty => 部成
+ * 2. cumQty == qty => 全成
+ * 3. 已撤单/废单后不再进入成交态
+ * 4. 撤单确认时计算剩余撤单量
  */
 function updateOrderStatus(o: Order, event: SomeEventType): Order {
   switch (event.type) {
@@ -286,9 +276,7 @@ function updateOrderStatus(o: Order, event: SomeEventType): Order {
   }
 }
 
-/**
- * 根据状态返回用于标签展示的样式。
- */
+/** 根据状态返回展示标签样式。 */
 const getStatusClassName = (status: OrderStatus): string => {
   switch (status) {
     case OrderStatus.Filled:
@@ -310,14 +298,15 @@ const getStatusClassName = (status: OrderStatus): string => {
 };
 
 /**
-   * 交易员终端主界面。
-   */
+ * 交易员终端页面。
+ */
 export default function App() {
-  /** 订单列表状态。 */
+  /** 订单列表与页面状态。 */
   const [orders, setOrders] = useState<Order[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
+  const [lang, setLang] = useState<"en" | "zh">("en");
   const cancelingOrderIdsRef = useRef<Set<string>>(new Set());
   const cancelPrevStatusRef = useRef<Map<string, OrderStatus>>(new Map());
 
@@ -331,7 +320,7 @@ export default function App() {
     shareholderId: "A123456789",
   });
 
-  /** 当前用户 ID（用股东号作为用户维度进行订阅） */
+  /** 当前用户 ID（以股东号作为订阅维度）。 */
   const currentUserId = useMemo(() => form.shareholderId, [form.shareholderId]);
   const wsBoundRef = useRef(false);
 
@@ -345,9 +334,7 @@ export default function App() {
     );
   }, []);
 
-  /**
-   * 处理后端回报，转换为状态机事件。
-   */
+  /** 处理后端回报，并同步到前端状态。 */
   const handleTradeReturn = useCallback((ret: TradeReturnVO) => {
     const orderId = ret.origClOrderId || ret.clOrderId || "";
     if (!orderId) return;
@@ -463,17 +450,15 @@ export default function App() {
     });
   }, []);
 
-  /**
-   * 建立 WebSocket 订阅回报。
-   */
+  /** 建立 WebSocket 订阅并接收回报。 */
   useEffect(() => {
     if (!currentUserId || wsBoundRef.current) return;
     
-    // 按照回调函数方案实现
+    // 使用回调方式接入 WS 推送
     connectTradeReturnWS({
       userId: currentUserId,
       handleTradeReturn: (ret) => {
-        // 直接调用回调函数，将解析好的VO对象传递给业务逻辑
+        // 直接将解析后的 VO 传给业务处理函数
         handleTradeReturn(ret);
       },
       onStatusChange: (connected) => {
@@ -502,7 +487,7 @@ export default function App() {
 
   /**
    * 提交新订单，调用后端 /trade。
-   * 订单状态由后端回报驱动。
+   * 订单状态以后端回报为准。
    */
   const submitOrder = async (): Promise<void> => {
     setErrorMsg(null);
@@ -528,11 +513,11 @@ export default function App() {
 
     setSubmitting(true);
     try {
-        const resp = await api.submitOrder(payload);  // 【修改】获取响应对象
-        // 处理后端返回的状态
+        const resp = await api.submitOrder(payload);  // 获取响应对象
+        // 根据后端返回状态更新前端展示状态
         if (resp.status) {
-            // 根据后端状态更新前端状态
-            let frontendStatus: OrderStatus = OrderStatus.Pending;  // 【修改】添加类型注解
+            // 映射后端状态到前端状态枚举
+            let frontendStatus: OrderStatus = OrderStatus.Pending;  // 显式类型注解
             switch (resp.status) {
             case "PENDING":
                 frontendStatus = OrderStatus.Pending;
@@ -588,7 +573,7 @@ export default function App() {
             );
         }
     } catch (e: unknown) {
-      let msg = "下单失败";
+      let msg = "涓嬪崟澶辫触";
       if (e instanceof Error) {
         msg = e.message;
       } else if (typeof e === "string") {
@@ -609,9 +594,7 @@ export default function App() {
     }
   };
 
-  /**
-   * 发起撤单请求，状态由后端回报驱动。
-   */
+  /** 发起撤单请求，最终状态以后端回报为准。 */
   const handleCancel = async (origOrder: Order): Promise<void> => {
     setErrorMsg(null);
     const clOrderId = origOrder.clOrderId;
@@ -691,7 +674,7 @@ export default function App() {
         }, 5000);
       }
     } catch (e: unknown) {
-      let msg = "撤单失败";
+      let msg = "鎾ゅ崟澶辫触";
       if (e instanceof Error) {
         msg = e.message;
       } else if (typeof e === "string") {
@@ -710,157 +693,230 @@ export default function App() {
     }
   };
 
-  /**
-   * 判断订单是否允许撤单。
-   */
+  /** 判断订单是否允许撤单。 */
   const canCancel = (order: Order): boolean =>
     order.status === OrderStatus.Pending ||
     order.status === OrderStatus.Acked ||
     order.status === OrderStatus.PartiallyFilled;
 
+  const toggleLang = useCallback(() => {
+    setLang((prev) => (prev === "en" ? "zh" : "en"));
+  }, []);
+
+  const text = useMemo(
+    () =>
+      lang === "en"
+        ? {
+            securityId: "Security ID",
+            side: "Side",
+            price: "Price",
+            quantity: "Quantity",
+            buy: "Buy",
+            sell: "Sell",
+            submitting: "Submitting...",
+            submitOrder: "Submit Order",
+            orderId: "Order ID",
+            symbol: "Symbol",
+            qty: "Qty",
+            status: "Status",
+            fillProgress: "Fill Progress",
+            action: "Action",
+            cancel: "Cancel",
+            errorCode: "Error code",
+          }
+        : {
+            securityId: "证券代码",
+            side: "方向",
+            price: "委托价格",
+            quantity: "委托数量",
+            buy: "买入",
+            sell: "卖出",
+            submitting: "提交中...",
+            submitOrder: "提交订单",
+            orderId: "订单号",
+            symbol: "证券",
+            qty: "数量",
+            status: "状态",
+            fillProgress: "成交进度",
+            action: "操作",
+            cancel: "撤单",
+            errorCode: "错误码",
+          },
+    [lang]
+  );
+
+  const statusTextMap = useMemo<Record<OrderStatus, string>>(
+    () =>
+      lang === "en"
+        ? {
+            [OrderStatus.Pending]: "Pending",
+            [OrderStatus.Acked]: "Acked",
+            [OrderStatus.PartiallyFilled]: "Partially Filled",
+            [OrderStatus.Filled]: "Filled",
+            [OrderStatus.Canceling]: "Canceling",
+            [OrderStatus.Canceled]: "Canceled",
+            [OrderStatus.Rejected]: "Rejected",
+          }
+        : {
+            [OrderStatus.Pending]: "待报",
+            [OrderStatus.Acked]: "已报",
+            [OrderStatus.PartiallyFilled]: "部成",
+            [OrderStatus.Filled]: "全成",
+            [OrderStatus.Canceling]: "撤单中",
+            [OrderStatus.Canceled]: "已撤单",
+            [OrderStatus.Rejected]: "废单",
+          },
+    [lang]
+  );
+
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-blue-800">交易员终端 - 模拟交易对敲系统</h1>
-        <div className={`flex items-center px-3 py-1 rounded-full text-sm ${wsConnected ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-          <span className={`w-2 h-2 rounded-full mr-2 ${wsConnected ? 'bg-green-500' : 'bg-red-500'}`}></span>
-          {wsConnected ? 'WebSocket已连接' : 'WebSocket未连接'}
-        </div>
+      <div className="w-[95%] mx-auto mb-4">
+        <TopHeader
+          wsConnected={wsConnected}
+          lang={lang}
+          onToggleLang={toggleLang}
+        />
       </div>
 
-      <div className="bg-white p-4 rounded-lg shadow mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="flex flex-col">
-          <label className="text-sm text-gray-600 mb-1">证券代码</label>
-          <input
-            className="border p-2 rounded"
-            value={form.securityId}
-            onChange={(e) => setForm({ ...form, securityId: e.target.value })}
-          />
-        </div>
+      <BannerSection />
 
-        <div className="flex flex-col">
-          <label className="text-sm text-gray-600 mb-1">买卖方向</label>
-          <select
-            className="border p-2 rounded"
-            value={form.side}
-            onChange={(e) => setForm({ ...form, side: e.target.value as Side })}
+      <div className="w-[95%] mx-auto">
+        <div className="bg-white p-4 rounded-lg shadow mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="flex flex-col">
+            <label className="text-sm text-gray-600 mb-1">{text.securityId}</label>
+            <input
+              className="border p-2 rounded"
+              value={form.securityId}
+              onChange={(e) => setForm({ ...form, securityId: e.target.value })}
+            />
+          </div>
+
+          <div className="flex flex-col">
+            <label className="text-sm text-gray-600 mb-1">{text.side}</label>
+            <select
+              className="border p-2 rounded"
+              value={form.side}
+              onChange={(e) => setForm({ ...form, side: e.target.value as Side })}
+            >
+              <option value="B">{text.buy}</option>
+              <option value="S">{text.sell}</option>
+            </select>
+          </div>
+
+          <div className="flex flex-col">
+            <label className="text-sm text-gray-600 mb-1">{text.price}</label>
+            <input
+              className="border p-2 rounded"
+              type="number"
+              value={form.price}
+              onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
+            />
+          </div>
+
+          <div className="flex flex-col">
+            <label className="text-sm text-gray-600 mb-1">{text.quantity}</label>
+            <input
+              className="border p-2 rounded"
+              type="number"
+              value={form.qty}
+              onChange={(e) => setForm({ ...form, qty: Number(e.target.value) })}
+            />
+          </div>
+
+          <button
+            className={`md:col-span-4 mt-2 text-white py-2 rounded font-bold ${
+              submitting ? "bg-blue-300 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"
+            }`}
+            onClick={submitOrder}
+            disabled={submitting}
           >
-            <option value="B">买入 (Buy)</option>
-            <option value="S">卖出 (Sell)</option>
-          </select>
+            {submitting ? text.submitting : text.submitOrder}
+          </button>
         </div>
 
-        <div className="flex flex-col">
-          <label className="text-sm text-gray-600 mb-1">委托价格</label>
-          <input
-            className="border p-2 rounded"
-            type="number"
-            value={form.price}
-            onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
-          />
-        </div>
+        {errorMsg && (
+          <div className="bg-red-50 text-red-700 border border-red-200 px-4 py-2 rounded mb-4">
+            {errorMsg}
+          </div>
+        )}
 
-        <div className="flex flex-col">
-          <label className="text-sm text-gray-600 mb-1">委托数量</label>
-          <input
-            className="border p-2 rounded"
-            type="number"
-            value={form.qty}
-            onChange={(e) => setForm({ ...form, qty: Number(e.target.value) })}
-          />
-        </div>
-
-        <button
-          className={`md:col-span-4 mt-2 text-white py-2 rounded font-bold ${
-            submitting ? "bg-blue-300 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"
-          }`}
-          onClick={submitOrder}
-          disabled={submitting}
-        >
-          {submitting ? "提交中..." : "提交订单"}
-        </button>
-      </div>
-
-      {errorMsg && (
-        <div className="bg-red-50 text-red-700 border border-red-200 px-4 py-2 rounded mb-4">
-          {errorMsg}
-        </div>
-      )}
-
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <table className="w-full text-left">
-          <thead className="bg-gray-100 border-b">
-            <tr>
-              <th className="p-3">订单号</th>
-              <th className="p-3">证券</th>
-              <th className="p-3">方向</th>
-              <th className="p-3">价格</th>
-              <th className="p-3">数量</th>
-              <th className="p-3">状态</th>
-              <th className="p-3">成交进度</th>
-              <th className="p-3">操作</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {orders.map((o) => (
-              <tr key={o.clOrderId} className="border-b hover:bg-gray-50">
-                <td className="p-3 text-xs font-mono">{o.clOrderId}</td>
-                <td className="p-3">{o.securityId}</td>
-
-                <td className={`p-3 font-bold ${o.side === "B" ? "text-red-500" : "text-green-500"}`}>
-                  {o.side === "B" ? "买入" : "卖出"}
-                </td>
-
-                <td className="p-3">{o.price}</td>
-                <td className="p-3">{o.qty}</td>
-
-                <td className="p-3">
-                  <span
-                    className={`px-2 py-1 rounded text-xs ${getStatusClassName(o.status)}`}
-                    title={
-                      o.status === OrderStatus.Rejected && o.errorMsg
-                        ? `错误代码: ${o.errorCode ?? ""} ${o.errorMsg ?? ""}`
-                        : undefined
-                    }
-                  >
-                    {o.status}
-                  </span>
-                  {o.status === OrderStatus.Rejected && o.errorMsg && (
-                    <div className="text-xs text-red-500 mt-1 truncate max-w-[120px]">
-                      {o.errorMsg}
-                    </div>
-                  )}
-                </td>
-
-                <td className="p-3">
-                  {(o.status === OrderStatus.PartiallyFilled || o.status === OrderStatus.Filled) && (
-                    <span
-                      className={`font-semibold ${
-                        o.status === OrderStatus.Filled ? "text-green-600" : "text-orange-600"
-                      }`}
-                    >
-                      {o.cumQty}/{o.qty}
-                    </span>
-                  )}
-                  {o.status !== OrderStatus.PartiallyFilled && o.status !== OrderStatus.Filled && "-"}
-                </td>
-
-                <td className="p-3">
-                  {canCancel(o) && (
-                    <button
-                      className="text-red-600 hover:underline text-sm"
-                      onClick={() => handleCancel(o)}
-                    >
-                      撤单
-                    </button>
-                  )}
-                </td>
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <table className="w-full text-left">
+            <thead className="bg-gray-100 border-b">
+              <tr>
+                <th className="p-3">{text.orderId}</th>
+                <th className="p-3">{text.symbol}</th>
+                <th className="p-3">{text.side}</th>
+                <th className="p-3">{text.price}</th>
+                <th className="p-3">{text.qty}</th>
+                <th className="p-3">{text.status}</th>
+                <th className="p-3">{text.fillProgress}</th>
+                <th className="p-3">{text.action}</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+
+            <tbody>
+              {orders.map((o) => (
+                <tr key={o.clOrderId} className="border-b hover:bg-gray-50">
+                  <td className="p-3 text-xs font-mono">{o.clOrderId}</td>
+                  <td className="p-3">{o.securityId}</td>
+
+                  <td className={`p-3 font-bold ${o.side === "B" ? "text-red-500" : "text-green-500"}`}>
+                    {o.side === "B" ? text.buy : text.sell}
+                  </td>
+
+                  <td className="p-3">{o.price}</td>
+                  <td className="p-3">{o.qty}</td>
+
+                  <td className="p-3">
+                    <span
+                      className={`px-2 py-1 rounded text-xs ${getStatusClassName(o.status)}`}
+                      title={
+                        o.status === OrderStatus.Rejected && o.errorMsg
+                          ? `${text.errorCode}: ${o.errorCode ?? ""} ${o.errorMsg ?? ""}`
+                          : undefined
+                      }
+                    >
+                      {statusTextMap[o.status] ?? o.status}
+                    </span>
+                    {o.status === OrderStatus.Rejected && o.errorMsg && (
+                      <div className="text-xs text-red-500 mt-1 truncate max-w-[120px]">
+                        {o.errorMsg}
+                      </div>
+                    )}
+                  </td>
+
+                  <td className="p-3">
+                    {(o.status === OrderStatus.PartiallyFilled || o.status === OrderStatus.Filled) && (
+                      <span
+                        className={`font-semibold ${
+                          o.status === OrderStatus.Filled ? "text-green-600" : "text-orange-600"
+                        }`}
+                      >
+                        {o.cumQty}/{o.qty}
+                      </span>
+                    )}
+                    {o.status !== OrderStatus.PartiallyFilled && o.status !== OrderStatus.Filled && "-"}
+                  </td>
+
+                  <td className="p-3">
+                    {canCancel(o) && (
+                      <button
+                        className="text-red-600 hover:underline text-sm"
+                        onClick={() => handleCancel(o)}
+                      >
+                        {text.cancel}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
 }
+
