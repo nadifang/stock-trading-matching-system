@@ -6,8 +6,8 @@ import BannerSection from "./components/BannerSection";
 import TopHeader from "./components/TopHeader";
 
 /**
- * 璁㈠崟鐘舵€佹灇涓俱€?
- * 浣跨敤鍙楁帶鏋氫妇鏇夸唬鑷敱瀛楃涓诧紝閬垮厤鐘舵€佸€兼嫾鍐欓敊璇拰闈炴硶娴佽浆銆?
+ * 订单状态枚举。
+ * 使用受控常量代替自由字符串，避免拼写错误与非法状态流转。
  */
 const OrderStatus = {
   Pending: "Pending",
@@ -22,14 +22,10 @@ const OrderStatus = {
 type OrderStatus = (typeof OrderStatus)[keyof typeof OrderStatus];
 
 
-/**
- * 涔板崠鏂瑰悜銆?
- */
+/** 买卖方向。 */
 type Side = "B" | "S";
 
-/**
- * 璁㈠崟鍥炴姤浜嬩欢绫诲瀷銆?
- */
+/** 订单回报事件类型。 */
 type OrderEventType =
   | "ORDER_ACK"
   | "ORDER_PARTIAL_FILL"
@@ -38,8 +34,8 @@ type OrderEventType =
   | "CANCEL_ACK";
 
 /**
- * 鐘舵€佹満杈撳叆浜嬩欢銆?
- * 閮ㄥ垎鎴愪氦鍜屽叏鎴愪簨浠跺彲鎼哄甫鎴愪氦浠?鎴愪氦閲忋€?
+ * 状态机输入事件。
+ * 部成/全成事件可携带成交数量与成交价格。
  */
 interface SomeEventType {
   type: OrderEventType;
@@ -47,9 +43,7 @@ interface SomeEventType {
   fillPrice?: number;
 }
 
-/**
- * 璁㈠崟瀹炰綋銆?
- */
+/** 前端订单实体。 */
 interface Order {
   clOrderId: string;
   market: string;
@@ -66,9 +60,7 @@ interface Order {
   errorCode?: number;
 }
 
-/**
- * 涓嬪崟琛ㄥ崟鏁版嵁銆?
- */
+/** 下单表单数据。 */
 interface OrderForm {
   market: string;
   securityId: string;
@@ -78,9 +70,7 @@ interface OrderForm {
   shareholderId: string;
 }
 
-/**
- * 鐢熸垚瀹㈡埛绔鍗曞彿銆?
- */
+/** 生成客户端订单号。 */
 const generateId = (): string => {
   const now = Date.now().toString();
   const rand = Math.floor(Math.random() * 1e8)
@@ -89,9 +79,7 @@ const generateId = (): string => {
   return (now + rand).slice(-16);
 };
 
-/**
- * 鍒ゆ柇璁㈠崟鏄惁宸茶繘鍏ョ粓鎬併€?
- */
+/** 判断订单是否已进入终态。 */
 const isFinalStatus = (status: OrderStatus): boolean =>
   status === OrderStatus.Filled ||
   status === OrderStatus.Canceled ||
@@ -198,13 +186,13 @@ const applyTradeReturnStatus = (
 };
 
 /**
- * 鏍规嵁浜嬩欢椹卞姩璁㈠崟鐘舵€佹祦杞€?
+ * 按事件驱动订单状态流转。
  *
- * 涓氬姟瑙勫垯锛?
- * 1. 閮ㄥ垎鎴愪氦锛歝umQty < qty => 閮ㄦ垚銆?
- * 2. 鍏ㄩ儴鎴愪氦锛歝umQty == qty => 鍏ㄦ垚銆?
- * 3. 宸叉挙鍗曞悗涓嶅啀杩涘叆浠讳綍鎴愪氦鎬併€?
- * 4. 鎾ゅ崟鍥炴姤浼氳绠楀墿浣欐挙閿€閲忋€?
+ * 规则：
+ * 1. cumQty < qty => 部成
+ * 2. cumQty == qty => 全成
+ * 3. 已撤单/废单后不再进入成交态
+ * 4. 撤单确认时计算剩余撤单量
  */
 function updateOrderStatus(o: Order, event: SomeEventType): Order {
   switch (event.type) {
@@ -288,9 +276,7 @@ function updateOrderStatus(o: Order, event: SomeEventType): Order {
   }
 }
 
-/**
- * 鏍规嵁鐘舵€佽繑鍥炵敤浜庢爣绛惧睍绀虹殑鏍峰紡銆?
- */
+/** 根据状态返回展示标签样式。 */
 const getStatusClassName = (status: OrderStatus): string => {
   switch (status) {
     case OrderStatus.Filled:
@@ -312,10 +298,10 @@ const getStatusClassName = (status: OrderStatus): string => {
 };
 
 /**
-   * 浜ゆ槗鍛樼粓绔富鐣岄潰銆?
-   */
+ * 交易员终端页面。
+ */
 export default function App() {
-  /** 璁㈠崟鍒楄〃鐘舵€併€?*/
+  /** 订单列表与页面状态。 */
   const [orders, setOrders] = useState<Order[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -324,7 +310,7 @@ export default function App() {
   const cancelingOrderIdsRef = useRef<Set<string>>(new Set());
   const cancelPrevStatusRef = useRef<Map<string, OrderStatus>>(new Map());
 
-  /** 涓嬪崟琛ㄥ崟鐘舵€併€?*/
+  /** 下单表单状态。 */
   const [form, setForm] = useState<OrderForm>({
     market: "XSHG",
     securityId: "600030",
@@ -334,13 +320,13 @@ export default function App() {
     shareholderId: "A123456789",
   });
 
-  /** 褰撳墠鐢ㄦ埛 ID锛堢敤鑲′笢鍙蜂綔涓虹敤鎴风淮搴﹁繘琛岃闃咃級 */
+  /** 当前用户 ID（以股东号作为订阅维度）。 */
   const currentUserId = useMemo(() => form.shareholderId, [form.shareholderId]);
   const wsBoundRef = useRef(false);
 
   /**
-   * 鍚戝崟涓鍗曟淳鍙戜簨浠躲€?
-   * 鎵€鏈夌姸鎬佸彉鍖栫粺涓€閫氳繃鐘舵€佹満澶勭悊銆?
+   * 向单个订单派发事件。
+   * 所有状态变化统一通过状态机处理。
    */
   const emitOrderEvent = useCallback((clOrderId: string, event: SomeEventType): void => {
     setOrders((prev) =>
@@ -348,9 +334,7 @@ export default function App() {
     );
   }, []);
 
-  /**
-   * 澶勭悊鍚庣鍥炴姤锛岃浆鎹负鐘舵€佹満浜嬩欢銆?
-   */
+  /** 处理后端回报，并同步到前端状态。 */
   const handleTradeReturn = useCallback((ret: TradeReturnVO) => {
     const orderId = ret.origClOrderId || ret.clOrderId || "";
     if (!orderId) return;
@@ -466,17 +450,15 @@ export default function App() {
     });
   }, []);
 
-  /**
-   * 寤虹珛 WebSocket 璁㈤槄鍥炴姤銆?
-   */
+  /** 建立 WebSocket 订阅并接收回报。 */
   useEffect(() => {
     if (!currentUserId || wsBoundRef.current) return;
     
-    // 鎸夌収鍥炶皟鍑芥暟鏂规瀹炵幇
+    // 使用回调方式接入 WS 推送
     connectTradeReturnWS({
       userId: currentUserId,
       handleTradeReturn: (ret) => {
-        // 鐩存帴璋冪敤鍥炶皟鍑芥暟锛屽皢瑙ｆ瀽濂界殑VO瀵硅薄浼犻€掔粰涓氬姟閫昏緫
+        // 直接将解析后的 VO 传给业务处理函数
         handleTradeReturn(ret);
       },
       onStatusChange: (connected) => {
@@ -504,8 +486,8 @@ export default function App() {
   }, [orders]);
 
   /**
-   * 鎻愪氦鏂拌鍗曪紝璋冪敤鍚庣 /trade銆?
-   * 璁㈠崟鐘舵€佺敱鍚庣鍥炴姤椹卞姩銆?
+   * 提交新订单，调用后端 /trade。
+   * 订单状态以后端回报为准。
    */
   const submitOrder = async (): Promise<void> => {
     setErrorMsg(null);
@@ -531,11 +513,11 @@ export default function App() {
 
     setSubmitting(true);
     try {
-        const resp = await api.submitOrder(payload);  // 銆愪慨鏀广€戣幏鍙栧搷搴斿璞?
-        // 澶勭悊鍚庣杩斿洖鐨勭姸鎬?
+        const resp = await api.submitOrder(payload);  // 获取响应对象
+        // 根据后端返回状态更新前端展示状态
         if (resp.status) {
-            // 鏍规嵁鍚庣鐘舵€佹洿鏂板墠绔姸鎬?
-            let frontendStatus: OrderStatus = OrderStatus.Pending;  // 銆愪慨鏀广€戞坊鍔犵被鍨嬫敞瑙?
+            // 映射后端状态到前端状态枚举
+            let frontendStatus: OrderStatus = OrderStatus.Pending;  // 显式类型注解
             switch (resp.status) {
             case "PENDING":
                 frontendStatus = OrderStatus.Pending;
@@ -612,9 +594,7 @@ export default function App() {
     }
   };
 
-  /**
-   * 鍙戣捣鎾ゅ崟璇锋眰锛岀姸鎬佺敱鍚庣鍥炴姤椹卞姩銆?
-   */
+  /** 发起撤单请求，最终状态以后端回报为准。 */
   const handleCancel = async (origOrder: Order): Promise<void> => {
     setErrorMsg(null);
     const clOrderId = origOrder.clOrderId;
@@ -713,9 +693,7 @@ export default function App() {
     }
   };
 
-  /**
-   * 鍒ゆ柇璁㈠崟鏄惁鍏佽鎾ゅ崟銆?
-   */
+  /** 判断订单是否允许撤单。 */
   const canCancel = (order: Order): boolean =>
     order.status === OrderStatus.Pending ||
     order.status === OrderStatus.Acked ||
@@ -763,6 +741,30 @@ export default function App() {
             action: "操作",
             cancel: "撤单",
             errorCode: "错误码",
+          },
+    [lang]
+  );
+
+  const statusTextMap = useMemo<Record<OrderStatus, string>>(
+    () =>
+      lang === "en"
+        ? {
+            [OrderStatus.Pending]: "Pending",
+            [OrderStatus.Acked]: "Acked",
+            [OrderStatus.PartiallyFilled]: "Partially Filled",
+            [OrderStatus.Filled]: "Filled",
+            [OrderStatus.Canceling]: "Canceling",
+            [OrderStatus.Canceled]: "Canceled",
+            [OrderStatus.Rejected]: "Rejected",
+          }
+        : {
+            [OrderStatus.Pending]: "待报",
+            [OrderStatus.Acked]: "已报",
+            [OrderStatus.PartiallyFilled]: "部成",
+            [OrderStatus.Filled]: "全成",
+            [OrderStatus.Canceling]: "撤单中",
+            [OrderStatus.Canceled]: "已撤单",
+            [OrderStatus.Rejected]: "废单",
           },
     [lang]
   );
@@ -876,7 +878,7 @@ export default function App() {
                           : undefined
                       }
                     >
-                      {o.status}
+                      {statusTextMap[o.status] ?? o.status}
                     </span>
                     {o.status === OrderStatus.Rejected && o.errorMsg && (
                       <div className="text-xs text-red-500 mt-1 truncate max-w-[120px]">
