@@ -140,16 +140,16 @@ public class orderServiceImpl extends ServiceImpl<orderMapper, Order> implements
             }
 
             //5.使用RabbitMQ把订单数据发送到模拟风控系统，异步处理
-            OrderCreatedEvent event = new OrderCreatedEvent(
-                    orderCommand.getClOrderId(),
-                    orderCommand.getMarket(),
-                    orderCommand.getSecurityId(),
-                    orderCommand.getSide(),
-                    orderCommand.getQty(),
-                    orderCommand.getPrice(),
-                    orderCommand.getShareholderId()
-            );
-            orderEventPublisherService.publishOrderCreatedEvent(event);
+//            OrderCreatedEvent event = new OrderCreatedEvent(
+//                    orderCommand.getClOrderId(),
+//                    orderCommand.getMarket(),
+//                    orderCommand.getSecurityId(),
+//                    orderCommand.getSide(),
+//                    orderCommand.getQty(),
+//                    orderCommand.getPrice(),
+//                    orderCommand.getShareholderId()
+//            );
+//            orderEventPublisherService.publishOrderCreatedEvent(event);
         }
 
         //6.返回订单

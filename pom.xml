@@ -15,9 +15,9 @@
         <module>Common</module>
         <module>stms-service</module>
         <module>trade-return</module>
-        <module>trade_query</module>
-        <module>Gateway</module>
+        <module>trade-query</module>
         <module>dotest</module>
+        <module>Export-Data</module>
     </modules>
 
     <parent>
