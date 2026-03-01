@@ -36,13 +36,13 @@ public class CumQtyServiceImpl extends ServiceImpl<exportMapper, Order> implemen
 
         String securityIdList = StringUtils.join(top10SecurityIdVO, ",");
 
-        //3. 获取股票交易金额
+        //3. 获取股票交易量
         List<Double> top10AmountVO = exportMapper.selectTop10_cumQty_security_amount(start, end);
         for (Double amount : top10AmountVO){
             double reAmount = amount / 2;
             top10AmountVO.set(top10AmountVO.indexOf(amount), reAmount);
         }
-        log.info("股票交易金额: {}", top10AmountVO);
+        log.info("股票交易量: {}", top10AmountVO);
 
         String qtyList = StringUtils.join(top10AmountVO, ",");
 
