@@ -44,13 +44,13 @@ export interface CancelOrderResp {
 
 export const api = {
   submitOrder(dto: SubmitOrderDTO) {
-    return request<SubmitOrderResp>("/trade/submit", {
+    return request<SubmitOrderResp>("/submit", {
       method: "POST",
       body: JSON.stringify(dto),
     });
   },
   cancelOrder(dto: CancelOrderDTO) {
-    return request<CancelOrderResp>("/trade/cancel", {
+    return request<CancelOrderResp>("/cancel", {
       method: "POST",
       body: JSON.stringify(dto),
     });
