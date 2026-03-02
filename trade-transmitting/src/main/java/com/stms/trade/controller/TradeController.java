@@ -18,7 +18,7 @@ import javax.annotation.Resource;
 
 @Slf4j
 @RestController
-@RequestMapping("/trade")
+@RequestMapping("/trade-transmitting")
 public class  TradeController {
 
     @Resource

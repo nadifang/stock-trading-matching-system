@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.stms.export.mapper.exportMapper">
+
+
+    <select id="selectTop10_securityId" resultType="java.lang.String">
+        SELECT
+            security_id AS securityId
+        FROM
+            tb_order
+        WHERE
+            create_time BETWEEN #{startTime} AND #{endTime}
+        GROUP BY
+            security_id
+        ORDER BY
+            SUM(traded_amount) DESC
+            LIMIT 10
+    </select>
+
+    <select id="selectTop10_security_amount" resultType="java.lang.Double">
+        SELECT
+            SUM(traded_amount) AS traded_amount
+        FROM
+            tb_order
+        WHERE
+            create_time BETWEEN #{startTime} AND #{endTime}
+        GROUP BY
+            security_id
+        ORDER BY
+            SUM(traded_amount) DESC
+            LIMIT 10
+    </select>
+
+    <select id="selectTop10_shareholderId" resultType="java.lang.String">
+        SELECT shareholder_id
+        FROM tb_order
+        GROUP BY shareholder_id
+        ORDER BY SUM(traded_amount) DESC
+            LIMIT 10;
+    </select>
+
+    <select id="selectTop10_shareholder_amount" resultType="java.lang.Double">
+        SELECT SUM(traded_amount) AS tta
+        FROM tb_order
+        GROUP BY shareholder_id
+        ORDER BY tta DESC
+            LIMIT 10;
+    </select>
+
+    <select id="selectTop10_cumQty_securityId" resultType="java.lang.String">
+        SELECT
+            security_id AS securityId
+        FROM
+            tb_order
+        WHERE
+            create_time BETWEEN #{startTime} AND #{endTime}
+        GROUP BY
+            security_id
+        ORDER BY
+            SUM(cum_qty) DESC
+            LIMIT 10
+    </select>
+
+    <select id="selectTop10_cumQty_security_amount" resultType="java.lang.Double">
+        SELECT
+            SUM(cum_qty)
+        FROM
+            tb_order
+        WHERE
+            create_time BETWEEN #{startTime} AND #{endTime}
+        GROUP BY
+            security_id
+        ORDER BY
+            SUM(cum_qty) DESC
+            LIMIT 10
+    </select>
+
+
+</mapper>

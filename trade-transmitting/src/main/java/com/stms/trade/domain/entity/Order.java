@@ -8,6 +8,8 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
+
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
@@ -86,6 +88,10 @@ public class Order {
     @TableField("traded_amount")
     private double tradedAmount;
 
+    /**
+     * 创建时间
+     */
+    private LocalDateTime createTime;
 
     public Order(String clOrderId, String market, String securityId, String side, Long qty, double price, String shareholderId) {
         this.clOrderId = clOrderId;
@@ -95,5 +101,6 @@ public class Order {
         this.qty = qty;
         this.price = price;
         this.shareholderId = shareholderId;
+        this.createTime = LocalDateTime.now();
     }
 }
