@@ -5,6 +5,10 @@ interface TopHeaderProps {
   logoSrc?: string;
   lang: "en" | "zh";
   onToggleLang: () => void;
+  searchValue: string;
+  onSearchValueChange: (value: string) => void;
+  onSearch: () => void;
+  onClearSearch: () => void;
 }
 
 function LogoFallback() {
@@ -20,6 +24,10 @@ export default function TopHeader({
   logoSrc = "/logo.png",
   lang,
   onToggleLang,
+  searchValue,
+  onSearchValueChange,
+  onSearch,
+  onClearSearch,
 }: TopHeaderProps) {
   const [logoLoadError, setLogoLoadError] = useState(false);
 
@@ -46,12 +54,25 @@ export default function TopHeader({
             type="text"
             placeholder={lang === "en" ? "Search order by Order ID / Symbol" : "按订单号或证券代码搜索"}
             className="w-full h-10 rounded-lg border border-slate-300 bg-slate-50 px-3 text-sm outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400"
+            value={searchValue}
+            onChange={(e) => onSearchValueChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") onSearch();
+            }}
           />
           <button
             type="button"
             className="h-10 px-4 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
+            onClick={onSearch}
           >
             {lang === "en" ? "Search" : "搜索"}
+          </button>
+          <button
+            type="button"
+            className="h-10 px-3 rounded-lg border border-slate-300 text-sm text-slate-700 hover:bg-slate-50"
+            onClick={onClearSearch}
+          >
+            {lang === "en" ? "Clear" : "清空"}
           </button>
         </div>
       </div>

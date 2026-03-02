@@ -303,6 +303,10 @@ const getStatusClassName = (status: OrderStatus): string => {
 export default function App() {
   /** 订单列表与页面状态。 */
   const [orders, setOrders] = useState<Order[]>([]);
+  const [searchInput, setSearchInput] = useState("");
+  const [searchId, setSearchId] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize] = useState(10);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
@@ -771,6 +775,40 @@ export default function App() {
     [lang]
   );
 
+  const filteredOrders = useMemo(() => {
+    const keyword = searchId.trim();
+    if (!keyword) return orders;
+    return orders.filter(
+      (o) => o.clOrderId.includes(keyword) || o.securityId.includes(keyword)
+    );
+  }, [orders, searchId]);
+
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(filteredOrders.length / pageSize)),
+    [filteredOrders.length, pageSize]
+  );
+
+  const paginatedOrders = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    const end = start + pageSize;
+    return filteredOrders.slice(start, end);
+  }, [filteredOrders, currentPage, pageSize]);
+
+  useEffect(() => {
+    setCurrentPage((prev) => Math.min(prev, totalPages));
+  }, [totalPages]);
+
+  const handleSearch = useCallback(() => {
+    setSearchId(searchInput.trim());
+    setCurrentPage(1);
+  }, [searchInput]);
+
+  const handleClearSearch = useCallback(() => {
+    setSearchInput("");
+    setSearchId("");
+    setCurrentPage(1);
+  }, []);
+
   return (
     <div
       className="p-6 min-h-screen"
@@ -783,6 +821,10 @@ export default function App() {
           wsConnected={wsConnected}
           lang={lang}
           onToggleLang={toggleLang}
+          searchValue={searchInput}
+          onSearchValueChange={setSearchInput}
+          onSearch={handleSearch}
+          onClearSearch={handleClearSearch}
         />
       </div>
 
@@ -878,7 +920,7 @@ export default function App() {
             </thead>
 
             <tbody>
-              {orders.map((o) => (
+              {paginatedOrders.map((o) => (
                 <tr key={o.clOrderId} className="border-b hover:bg-gray-50">
                   <td className="p-3 text-xs font-mono">{o.clOrderId}</td>
                   <td className="p-3">{o.securityId}</td>
@@ -936,6 +978,26 @@ export default function App() {
               ))}
             </tbody>
           </table>
+        </div>
+
+        <div className="mt-4 flex items-center justify-end gap-3">
+          <button
+            className="px-3 py-1.5 border border-gray-300 rounded disabled:opacity-50"
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            disabled={currentPage === 1}
+          >
+            Previous
+          </button>
+          <span className="text-sm text-gray-700">
+            Page {currentPage} / {totalPages}
+          </span>
+          <button
+            className="px-3 py-1.5 border border-gray-300 rounded disabled:opacity-50"
+            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages}
+          >
+            Next
+          </button>
         </div>
       </div>
     </div>
