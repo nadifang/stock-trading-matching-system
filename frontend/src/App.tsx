@@ -707,6 +707,7 @@ export default function App() {
     () =>
       lang === "en"
         ? {
+            market: "Market",
             securityId: "Security ID",
             side: "Side",
             price: "Price",
@@ -725,6 +726,7 @@ export default function App() {
             errorCode: "Error code",
           }
         : {
+            market: "市场",
             securityId: "证券代码",
             side: "方向",
             price: "委托价格",
@@ -770,7 +772,12 @@ export default function App() {
   );
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
+    <div
+      className="p-6 min-h-screen"
+      style={{
+        backgroundImage: "linear-gradient(to bottom, #dbeafe 0%, #ffffff 30%, #ffffff 100%)",
+      }}
+    >
       <div className="w-[95%] mx-auto mb-4">
         <TopHeader
           wsConnected={wsConnected}
@@ -782,7 +789,20 @@ export default function App() {
       <BannerSection />
 
       <div className="w-[95%] mx-auto">
-        <div className="bg-white p-4 rounded-lg shadow mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-white p-4 rounded-lg shadow mb-6 grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="flex flex-col">
+            <label className="text-sm text-gray-600 mb-1">{text.market}</label>
+            <select
+              className="border p-2 rounded"
+              value={form.market}
+              onChange={(e) => setForm({ ...form, market: e.target.value })}
+            >
+              <option value="XSHG">XSHG</option>
+              <option value="XSHE">XSHE</option>
+              <option value="BJSE">BJSE</option>
+            </select>
+          </div>
+
           <div className="flex flex-col">
             <label className="text-sm text-gray-600 mb-1">{text.securityId}</label>
             <input
@@ -825,7 +845,7 @@ export default function App() {
           </div>
 
           <button
-            className={`md:col-span-4 mt-2 text-white py-2 rounded font-bold ${
+            className={`md:col-span-5 mt-2 text-white py-2 rounded font-bold ${
               submitting ? "bg-blue-300 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"
             }`}
             onClick={submitOrder}
@@ -847,6 +867,7 @@ export default function App() {
               <tr>
                 <th className="p-3">{text.orderId}</th>
                 <th className="p-3">{text.symbol}</th>
+                <th className="p-3">{text.market}</th>
                 <th className="p-3">{text.side}</th>
                 <th className="p-3">{text.price}</th>
                 <th className="p-3">{text.qty}</th>
@@ -861,6 +882,7 @@ export default function App() {
                 <tr key={o.clOrderId} className="border-b hover:bg-gray-50">
                   <td className="p-3 text-xs font-mono">{o.clOrderId}</td>
                   <td className="p-3">{o.securityId}</td>
+                  <td className="p-3">{o.market}</td>
 
                   <td className={`p-3 font-bold ${o.side === "B" ? "text-red-500" : "text-green-500"}`}>
                     {o.side === "B" ? text.buy : text.sell}
