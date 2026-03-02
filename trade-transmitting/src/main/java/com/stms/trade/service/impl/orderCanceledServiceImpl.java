@@ -52,21 +52,15 @@ public class orderCanceledServiceImpl extends ServiceImpl<orderMapper, Order> im
                 .eq(Order::getClOrderId, canceledResponse.getOrigClOrderId())
                 .eq(Order::getStatus, OrderStatusConstant.ORDER_STATUS_PENDING)
                 .count() > 0;
-        //2.2 修改数据库订单状态
-        if (order_pending) {
-            lambdaUpdate().eq(Order::getClOrderId, canceledResponse.getOrigClOrderId())
-                    .set(Order::getStatus, OrderStatusConstant.ORDER_STATUS_CANCELED)
-                    .update();
-        }
-        //2.3 修改redis中订单状态
-        boolean cacheUpdated = redisSecurityService.updateOrderStatusWithProtection(
+
+        //2.2 修改数据库和Redis订单状态
+        boolean issuccess = redisSecurityService.updateOrderStatusWithProtection(
                 canceledResponse.getOrigClOrderId(),
-                OrderStatusConstant.ORDER_STATUS_CANCELED,
-                () -> true // 数据库已更新，这里直接返回true
+                OrderStatusConstant.ORDER_STATUS_CANCELED
         );
 
         //2.3 判断写redis是否成功
-        if (!cacheUpdated) {
+        if (!issuccess) {
             log.warn("Redis缓存更新失败，订单ID：{}", canceledResponse.getOrigClOrderId());
         }
 
@@ -109,6 +103,7 @@ public class orderCanceledServiceImpl extends ServiceImpl<orderMapper, Order> im
             log.error("撤单后查询订单信息失败，订单ID：{}", canceledResponse.getOrigClOrderId());
             throw new RuntimeException("订单信息查询失败");
         }
+        System.out.println("orderInfo.getMarket():"+orderInfo.getMarket());
 
         BeanUtil.copyProperties(orderInfo, canceledResponse,"clOrderId");
         canceledResponse.setCanceledQty(canceledResponse.getQty() - canceledResponse.getCumQty());

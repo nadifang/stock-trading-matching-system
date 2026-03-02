@@ -32,7 +32,7 @@ public class QueryController {
     @GetMapping("/list")
     public List<OrderDetailVO> list(@RequestParam(value = "current", defaultValue = "1") Integer current){
         log.info("查询从第{}页开始的10条数据", current);
-        Page<Order> page = orderQueryService.page(new Page<>(current, SystemConstant.MAX_PAGE_SIZE));
+        Page<Order> page = orderQueryService.page(new Page<>(current, 10));
         List<OrderDetailVO> list = new ArrayList<>();
         for(Order order : page.getRecords()){
             OrderDetailVO orderDetailVO = new OrderDetailVO();
