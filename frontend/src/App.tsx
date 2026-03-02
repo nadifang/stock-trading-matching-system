@@ -70,6 +70,15 @@ interface OrderForm {
   shareholderId: string;
 }
 
+interface ApiResult<T> {
+  success?: boolean;
+  data?: T;
+  errorMsg?: string | { rejectText?: string };
+}
+
+type SearchMode = "all" | "security" | "single";
+const API_BASE = import.meta.env?.VITE_API_BASE || "/api";
+
 /** 生成客户端订单号。 */
 const generateId = (): string => {
   const now = Date.now().toString();
@@ -303,10 +312,13 @@ const getStatusClassName = (status: OrderStatus): string => {
 export default function App() {
   /** 订单列表与页面状态。 */
   const [orders, setOrders] = useState<Order[]>([]);
-  const [searchInput, setSearchInput] = useState("");
-  const [searchId, setSearchId] = useState("");
+  const [searchValue, setSearchValue] = useState("");
+  const [activeSearchValue, setActiveSearchValue] = useState("");
+  const [searchMode, setSearchMode] = useState<SearchMode>("all");
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [pageSize] = useState(10);
+  const [listReloadToken, setListReloadToken] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
@@ -707,6 +719,136 @@ export default function App() {
     setLang((prev) => (prev === "en" ? "zh" : "en"));
   }, []);
 
+  const toOrder = useCallback((raw: Partial<Order> & Record<string, unknown>): Order => {
+    const sideRaw = String(raw.side ?? "B").toUpperCase();
+    const side: Side = sideRaw === "S" || sideRaw === "SELL" ? "S" : "B";
+    const remainingQtyRaw = Number(raw.remainingQty ?? raw.remaining_qty ?? 0);
+    const qtyRaw = Number(raw.qty ?? remainingQtyRaw ?? 0);
+    const qty = Number.isFinite(qtyRaw) ? Math.max(0, qtyRaw) : 0;
+    const cumQtyRaw = Number(raw.cumQty ?? 0);
+    const cumQty = Number.isFinite(cumQtyRaw)
+      ? Math.max(0, Math.min(qty || cumQtyRaw, cumQtyRaw))
+      : 0;
+    const mappedStatus =
+      resolveOrderStatusFromTradeReturn(typeof raw.status === "string" ? raw.status : undefined) ??
+      OrderStatus.Pending;
+
+    return {
+      clOrderId: String(raw.clOrderId ?? ""),
+      market: String(raw.market ?? ""),
+      securityId: String(raw.securityId ?? ""),
+      side,
+      qty,
+      price: Number(raw.price ?? 0) || 0,
+      shareholderId: String(raw.shareholderId ?? ""),
+      status: mappedStatus,
+      cumQty,
+      execPrice: Number(raw.execPrice ?? 0) || 0,
+      canceledQty: Number(raw.canceledQty ?? 0) || 0,
+      errorMsg: typeof raw.errorMsg === "string" ? raw.errorMsg : undefined,
+      errorCode:
+        typeof raw.errorCode === "number" && Number.isFinite(raw.errorCode)
+          ? raw.errorCode
+          : undefined,
+    };
+  }, []);
+
+  const unwrapApiData = useCallback(<T,>(raw: unknown): T => {
+    if (raw && typeof raw === "object" && "success" in raw) {
+      const wrapped = raw as ApiResult<T>;
+      if (wrapped.success === false) {
+        const msg =
+          typeof wrapped.errorMsg === "string"
+            ? wrapped.errorMsg
+            : wrapped.errorMsg?.rejectText || "Request failed";
+        throw new Error(msg);
+      }
+      return (wrapped.data as T) ?? ([] as T);
+    }
+    return raw as T;
+  }, []);
+
+  const fetchOrderList = useCallback(
+    async (page: number, securityId?: string): Promise<void> => {
+      const params = new URLSearchParams();
+      params.set("page", String(page));
+      params.set("current", String(page));
+      params.set("pageSize", String(pageSize));
+      params.set("size", String(pageSize));
+      if (securityId) {
+        params.set("securityId", securityId);
+      }
+
+      try {
+        const resp = await fetch(`${API_BASE}/trade-query/list?${params.toString()}`, {
+          method: "GET",
+          credentials: "include",
+        });
+        const raw = (await resp.json()) as unknown;
+        const payload = unwrapApiData<unknown>(raw);
+
+        let rows: unknown[] = [];
+        let pages = 1;
+        if (Array.isArray(payload)) {
+          rows = payload;
+        } else if (payload && typeof payload === "object") {
+          const data = payload as Record<string, unknown>;
+          const candidates = [data.records, data.list, data.items, data.content];
+          const found = candidates.find(Array.isArray);
+          rows = Array.isArray(found) ? found : [];
+          const pagesRaw = Number(data.totalPages ?? data.pages);
+          const totalRaw = Number(data.total);
+          pages = Number.isFinite(pagesRaw) && pagesRaw > 0 ? pagesRaw : 1;
+          if (pages === 1 && Number.isFinite(totalRaw) && totalRaw > 0) {
+            pages = Math.max(1, Math.ceil(totalRaw / pageSize));
+          }
+        }
+
+        const safeOrders = rows.map((item) =>
+          toOrder((item ?? {}) as Partial<Order> & Record<string, unknown>)
+        );
+        setErrorMsg(null);
+        setOrders(safeOrders);
+        setTotalPages(Math.max(1, pages));
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "Query list failed";
+        setErrorMsg(msg);
+        setOrders([]);
+        setTotalPages(1);
+      }
+    },
+    [pageSize, toOrder, unwrapApiData]
+  );
+
+  const fetchSingleOrder = useCallback(
+    async (clOrderId: string): Promise<void> => {
+      const params = new URLSearchParams();
+      params.set("clOrderId", clOrderId);
+
+      try {
+        const resp = await fetch(`${API_BASE}/trade-query/query?${params.toString()}`, {
+          method: "GET",
+          credentials: "include",
+        });
+        const raw = (await resp.json()) as unknown;
+        const payload = unwrapApiData<unknown>(raw);
+        const order =
+          payload && typeof payload === "object"
+            ? toOrder(payload as Partial<Order> & Record<string, unknown>)
+            : null;
+        setErrorMsg(null);
+        setOrders(order ? [order] : []);
+        setTotalPages(1);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "Query order failed";
+        setErrorMsg(msg);
+        setOrders([]);
+        setTotalPages(1);
+      }
+    },
+    [toOrder, unwrapApiData]
+  );
+
   const text = useMemo(
     () =>
       lang === "en"
@@ -775,38 +917,49 @@ export default function App() {
     [lang]
   );
 
-  const filteredOrders = useMemo(() => {
-    const keyword = searchId.trim();
-    if (!keyword) return orders;
-    return orders.filter(
-      (o) => o.clOrderId.includes(keyword) || o.securityId.includes(keyword)
-    );
-  }, [orders, searchId]);
-
-  const totalPages = useMemo(
-    () => Math.max(1, Math.ceil(filteredOrders.length / pageSize)),
-    [filteredOrders.length, pageSize]
-  );
-
-  const paginatedOrders = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    const end = start + pageSize;
-    return filteredOrders.slice(start, end);
-  }, [filteredOrders, currentPage, pageSize]);
+  const paginatedOrders = useMemo(() => orders, [orders]);
 
   useEffect(() => {
-    setCurrentPage((prev) => Math.min(prev, totalPages));
-  }, [totalPages]);
+    if (searchMode === "single") return;
+    const securityId =
+      searchMode === "security" && activeSearchValue.length === 6 ? activeSearchValue : undefined;
+    void fetchOrderList(currentPage, securityId);
+  }, [activeSearchValue, currentPage, fetchOrderList, searchMode, listReloadToken]);
 
-  const handleSearch = useCallback(() => {
-    setSearchId(searchInput.trim());
+  const onSearch = useCallback(async () => {
+    const keyword = searchValue.trim();
+    setErrorMsg(null);
+    setActiveSearchValue(keyword);
     setCurrentPage(1);
-  }, [searchInput]);
 
-  const handleClearSearch = useCallback(() => {
-    setSearchInput("");
-    setSearchId("");
+    if (!keyword) {
+      setSearchMode("all");
+      return;
+    }
+
+    if (keyword.length === 16) {
+      setSearchMode("single");
+      await fetchSingleOrder(keyword);
+      return;
+    }
+
+    if (keyword.length === 6) {
+      setSearchMode("security");
+      return;
+    }
+
+    setSearchMode("all");
+    setOrders([]);
+    setTotalPages(1);
+  }, [fetchSingleOrder, searchValue]);
+
+  const onClearSearch = useCallback(() => {
+    setErrorMsg(null);
+    setSearchValue("");
+    setActiveSearchValue("");
+    setSearchMode("all");
     setCurrentPage(1);
+    setListReloadToken((prev) => prev + 1);
   }, []);
 
   return (
@@ -821,10 +974,10 @@ export default function App() {
           wsConnected={wsConnected}
           lang={lang}
           onToggleLang={toggleLang}
-          searchValue={searchInput}
-          onSearchValueChange={setSearchInput}
-          onSearch={handleSearch}
-          onClearSearch={handleClearSearch}
+          searchValue={searchValue}
+          onSearchValueChange={(val) => setSearchValue(val)}
+          onSearch={onSearch}
+          onClearSearch={onClearSearch}
         />
       </div>
 
@@ -984,7 +1137,7 @@ export default function App() {
           <button
             className="px-3 py-1.5 border border-gray-300 rounded disabled:opacity-50"
             onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-            disabled={currentPage === 1}
+            disabled={searchMode === "single" || currentPage === 1}
           >
             Previous
           </button>
@@ -994,7 +1147,7 @@ export default function App() {
           <button
             className="px-3 py-1.5 border border-gray-300 rounded disabled:opacity-50"
             onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-            disabled={currentPage === totalPages}
+            disabled={searchMode === "single" || currentPage === totalPages}
           >
             Next
           </button>
