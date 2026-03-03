@@ -1,0 +1,87 @@
+//package com.stms.shareholder.config;
+//
+//import lombok.extern.slf4j.Slf4j;
+//import org.springframework.context.annotation.Bean;
+//import org.springframework.context.annotation.Configuration;
+//import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
+//import org.springframework.web.servlet.config.annotation.WebMvcConfigurationSupport;
+//import springfox.documentation.builders.ApiInfoBuilder;
+//import springfox.documentation.builders.PathSelectors;
+//import springfox.documentation.builders.RequestHandlerSelectors;
+//import springfox.documentation.service.ApiInfo;
+//import springfox.documentation.spi.DocumentationType;
+//import springfox.documentation.spring.web.plugins.Docket;
+//
+//@Configuration
+//@Slf4j
+//public class UserWebMvcConfig extends WebMvcConfigurationSupport {
+//
+//    @Bean
+//    public Docket docket() {
+//        log.info("准备生成接口文档");
+//        ApiInfo apiInfo = new ApiInfoBuilder()
+//                .title("STMS接口文档")
+//                .version("2.0")
+//                .description("STMS接口文档")
+//                .build();
+//        Docket docket = new Docket(DocumentationType.SWAGGER_2)
+//                .apiInfo(apiInfo)
+//                .select()
+//                .apis(RequestHandlerSelectors.basePackage("com.stms.shareholder.controller"))
+//                .paths(PathSelectors.any())
+//                .build();
+//        return docket;
+//    }
+//
+//    /**
+//     * 设置静态资源映射
+//     * @param registry
+//     */
+//    protected void addResourceHandlers(ResourceHandlerRegistry registry) {
+//        log.info("开始进行静态资源映射...");
+//        registry.addResourceHandler("/doc.html").addResourceLocations("classpath:/META-INF/resources/");
+//        registry.addResourceHandler("/webjars/**").addResourceLocations("classpath:/META-INF/resources/webjars/");
+//    }
+//}
+package com.stms.shareholder.config;
+
+import io.swagger.v3.oas.models.Components;
+import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.info.Info;
+import io.swagger.v3.oas.models.security.SecurityRequirement;
+import io.swagger.v3.oas.models.security.SecurityScheme;
+import org.springdoc.core.GroupedOpenApi;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class UserWebMvcConfig {
+
+    @Bean
+    public OpenAPI customOpenAPI() {
+        return new OpenAPI()
+                .info(new Info()
+                        .title("STMS接口文档")
+                        .version("2.0")
+                        .description("STMS接口文档"))
+                .components(new Components()
+                        .addSecuritySchemes("bearerAuth",
+                                new SecurityScheme()
+                                        .type(SecurityScheme.Type.HTTP)
+                                        .scheme("bearer")
+                                        .bearerFormat("JWT")
+                                        .in(SecurityScheme.In.HEADER)
+                                        .name("Authorization")
+                        ))
+                .addSecurityItem(new SecurityRequirement().addList("bearerAuth")); // 所有接口默认需要认证
+    }
+
+    // 可选：分组配置（如果需要）
+    @Bean
+    public GroupedOpenApi publicApi() {
+        return GroupedOpenApi.builder()
+                .group("STMS")
+                .pathsToMatch("/**")
+                .build();
+    }
+}

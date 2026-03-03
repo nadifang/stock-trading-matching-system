@@ -5,7 +5,7 @@ import com.stms.export.domian.vo.Top10_cumQtyVO;
 import com.stms.export.domian.vo.Top10_securityIdVO;
 import com.stms.export.mapper.exportMapper;
 import com.stms.export.service.CumQtyService;
-import com.stms.trade.domain.entity.Order;
+import com.stms.common.domain.entity.Order;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;

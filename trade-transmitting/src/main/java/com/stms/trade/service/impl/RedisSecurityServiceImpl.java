@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stms.common.constant.RedisConstant;
-import com.stms.trade.domain.entity.Order;
+import com.stms.common.domain.entity.Order;
 import com.stms.trade.mapper.orderMapper;
 import com.stms.trade.service.RedisSecurityService;
 import lombok.extern.slf4j.Slf4j;

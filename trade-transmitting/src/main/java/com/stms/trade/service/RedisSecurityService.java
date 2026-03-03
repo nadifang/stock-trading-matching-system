@@ -1,8 +1,8 @@
 package com.stms.trade.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
-import com.stms.trade.domain.entity.Order;
-import com.stms.trade.service.impl.RedisSecurityServiceImpl;
+import com.stms.common.domain.entity.Order;
+
 
 public interface RedisSecurityService extends IService<Order> {
     void addOrderIdToBloomFilter(String clOrderId);

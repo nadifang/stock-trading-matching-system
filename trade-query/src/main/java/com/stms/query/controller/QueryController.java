@@ -5,7 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.stms.common.constant.SystemConstant;
 import com.stms.query.domain.vo.OrderDetailVO;
 import com.stms.query.service.OrderQueryService;
-import com.stms.trade.domain.entity.Order;
+import com.stms.common.domain.entity.Order;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,11 +22,11 @@ public class QueryController {
     private OrderQueryService orderQueryService;
 
     @GetMapping("/query")
-    public OrderDetailVO query(@RequestParam String clOrderId) {
-        if (clOrderId == null)
+    public OrderDetailVO query(@RequestParam String securityId) {
+        if (securityId == null)
             return null;
-        log.info("查询订单: {}", clOrderId);
-        return new OrderDetailVO(orderQueryService.getOrderById(clOrderId));
+        log.info("股票订单: {}", securityId);
+        return new OrderDetailVO(orderQueryService.getOrderById(securityId));
     }
 
     @GetMapping("/list")

@@ -2,30 +2,24 @@ package com.stms.trade.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stms.common.constant.OrderIllegalCodeConstant;
 import com.stms.common.constant.OrderIllegalReasonConstant;
 import com.stms.common.constant.OrderStatusConstant;
 import com.stms.common.constant.RedisConstant;
 import com.stms.trade.domain.dto.orderDTO;
-import com.stms.trade.domain.entity.Order;
+import com.stms.common.domain.entity.Order;
 import com.stms.trade.mapper.orderMapper;
-import com.stms.trade.service.OrderEventPublisherService;
 import com.stms.trade.service.RedisSecurityService;
 import com.stms.trade.service.orderService;
-import com.stms.trade.task.OrderCreatedEvent;
 import com.stms.trade.utils.TradeRespose;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -39,8 +33,6 @@ import java.util.concurrent.Executors;
 @Service
 public class orderServiceImpl extends ServiceImpl<orderMapper, Order> implements orderService{
 
-    @Resource
-    private OrderEventPublisherService orderEventPublisherService;
     @Resource
     private StringRedisTemplate stringRedisTemplate;
     @Resource
@@ -88,7 +80,14 @@ public class orderServiceImpl extends ServiceImpl<orderMapper, Order> implements
         //1.订单格式化转换
         Order orderCommand = convertToOrderCommand(order);
 
-        //2. 短时间内重复订单ID检测
+        //2.1 订单ID重复检测
+        if(lambdaQuery()
+                .eq(Order::getClOrderId, orderCommand.getClOrderId())
+                .one() != null){
+            return TradeRespose.fail(OrderIllegalCodeConstant.ORDER_EXISTED,OrderIllegalReasonConstant.ORDER_EXISTED_REASON);
+        }
+
+        //2.2 短时间内重复订单ID检测
         if (redisSecurityService.isDuplicateOrderRequest(orderCommand.getClOrderId())) {
             log.warn("短时间内重复订单请求，直接拒绝，clOrderId={}", orderCommand.getClOrderId());
             return TradeRespose.fail(OrderIllegalCodeConstant.ORDER_DUPLICATE_REQUEST,

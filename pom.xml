@@ -18,6 +18,8 @@
         <module>trade-query</module>
         <module>dotest</module>
         <module>Export-Data</module>
+        <module>shareholder</module>
+        <module>Quotation</module>
     </modules>
 
     <parent>

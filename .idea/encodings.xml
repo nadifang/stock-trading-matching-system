@@ -3,10 +3,12 @@
   <component name="Encoding">
     <file url="file://$PROJECT_DIR$/Common/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/Export-Data/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/Quotation/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/Service/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/dotest/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/match-mocking/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/risk-control/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/shareholder/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/stms-app/src/main/java" charset="UTF-8" />
