@@ -4,6 +4,7 @@ import type { CancelOrderDTO, SubmitOrderDTO, TradeReturnVO } from "./types/serv
 import { connectTradeReturnWS, disconnectTradeReturnWS } from "./services/ws";
 import BannerSection from "./components/BannerSection";
 import TopHeader from "./components/TopHeader";
+import AuthModal from "./components/auth/AuthModal";
 
 /**
  * 订单状态枚举。
@@ -322,7 +323,11 @@ export default function App() {
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
-  const [lang, setLang] = useState<"en" | "zh">("en");
+  const [lang, setLang] = useState<"en" | "zh">('en');
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [activeAuthTab, setActiveAuthTab] = useState<"login" | "register">('login');
+  const [isLoggedIn, setIsLoggedIn] = useState(!!localStorage.getItem('authToken'));
+  const [currentUser, setCurrentUser] = useState<string | null>(localStorage.getItem('shareholderId'));
   const cancelingOrderIdsRef = useRef<Set<string>>(new Set());
   const cancelPrevStatusRef = useRef<Map<string, OrderStatus>>(new Map());
 
@@ -719,6 +724,33 @@ export default function App() {
     setLang((prev) => (prev === "en" ? "zh" : "en"));
   }, []);
 
+  const handleLoginSuccess = useCallback(() => {
+    setIsLoggedIn(true);
+    setCurrentUser(localStorage.getItem('shareholderId'));
+  }, []);
+
+  const handleRegisterSuccess = useCallback(() => {
+    setIsLoggedIn(true);
+    setCurrentUser(localStorage.getItem('shareholderId'));
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('shareholderId');
+    setIsLoggedIn(false);
+    setCurrentUser(null);
+  }, []);
+
+  const handleOpenLogin = useCallback(() => {
+    setActiveAuthTab('login');
+    setIsAuthModalOpen(true);
+  }, []);
+
+  const handleOpenRegister = useCallback(() => {
+    setActiveAuthTab('register');
+    setIsAuthModalOpen(true);
+  }, []);
+
   const toOrder = useCallback((raw: Partial<Order> & Record<string, unknown>): Order => {
     const sideRaw = String(raw.side ?? "B").toUpperCase();
     const side: Side = sideRaw === "S" || sideRaw === "SELL" ? "S" : "B";
@@ -980,6 +1012,11 @@ export default function App() {
           onSearchValueChange={(val) => setSearchValue(val)}
           onSearch={onSearch}
           onClearSearch={onClearSearch}
+          isLoggedIn={isLoggedIn}
+          currentUser={currentUser}
+          onLoginClick={handleOpenLogin}
+          onRegisterClick={handleOpenRegister}
+          onLogoutClick={handleLogout}
         />
       </div>
 
@@ -1155,6 +1192,15 @@ export default function App() {
           </button>
         </div>
       </div>
+      
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onLoginSuccess={handleLoginSuccess}
+        onRegisterSuccess={handleRegisterSuccess}
+        lang={lang}
+        initialTab={activeAuthTab}
+      />
     </div>
   );
 }

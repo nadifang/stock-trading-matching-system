@@ -9,6 +9,11 @@ interface TopHeaderProps {
   onSearchValueChange: (value: string) => void;
   onSearch: () => void;
   onClearSearch: () => void;
+  isLoggedIn?: boolean;
+  currentUser?: string | null;
+  onLoginClick?: () => void;
+  onRegisterClick?: () => void;
+  onLogoutClick?: () => void;
 }
 
 function LogoFallback() {
@@ -28,6 +33,11 @@ export default function TopHeader({
   onSearchValueChange,
   onSearch,
   onClearSearch,
+  isLoggedIn = false,
+  currentUser = null,
+  onLoginClick,
+  onRegisterClick,
+  onLogoutClick,
 }: TopHeaderProps) {
   const [logoLoadError, setLogoLoadError] = useState(false);
 
@@ -98,12 +108,35 @@ export default function TopHeader({
               ? "WS 已连接"
               : "WS 未连接"}
         </span>
-        <button type="button" className="h-9 px-3 rounded-lg border border-slate-300 text-sm text-slate-700 hover:bg-slate-50">
-          {lang === "en" ? "Login" : "登录"}
-        </button>
-        <button type="button" className="h-9 px-3 rounded-lg bg-slate-900 text-sm text-white hover:bg-black">
-          {lang === "en" ? "Register" : "注册"}
-        </button>
+        {!isLoggedIn ? (
+          <>
+            <button 
+              type="button" 
+              className="h-9 px-3 rounded-lg border border-slate-300 text-sm text-slate-700 hover:bg-slate-50"
+              onClick={onLoginClick}
+            >
+              {lang === "en" ? "Login" : "登录"}
+            </button>
+            <button 
+              type="button" 
+              className="h-9 px-3 rounded-lg bg-slate-900 text-sm text-white hover:bg-black"
+              onClick={onRegisterClick}
+            >
+              {lang === "en" ? "Register" : "注册"}
+            </button>
+          </>
+        ) : (
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-700">{currentUser}</span>
+            <button 
+              type="button" 
+              className="h-9 px-3 rounded-lg border border-slate-300 text-sm text-slate-700 hover:bg-slate-50"
+              onClick={onLogoutClick}
+            >
+              {lang === "en" ? "Logout" : "登出"}
+            </button>
+          </div>
+        )}
       </div>
     </header>
   );
