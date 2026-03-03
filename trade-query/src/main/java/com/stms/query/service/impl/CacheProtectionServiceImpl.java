@@ -30,47 +30,10 @@ import java.util.concurrent.TimeUnit;
 
     /**
      * 布隆过滤器防穿透、空值缓存防穿透、分布式锁防击穿、热点识别、随机TTL防雪崩
-     */
-    public <T> T getWithFullProtection(String clOrderId, OrderDbLoader<T> dbLoader, Class<T> clazz) {
-        // 1. 布隆过滤器防穿透
-        if (!checkBloomFilter(clOrderId)) {
-            log.warn("布隆过滤器拦截非法订单ID：{}", clOrderId);
-            return null;
-        }
-
-        // 2. 构建 Redis key
-        String redisKey = RedisConstant.ORDER_STATUS_KEY + clOrderId;
-
-        // 3. 尝试从 Redis 获取
-        String cachedValue = stringRedisTemplate.opsForValue().get(redisKey);
-
-        // 4. 处理空值缓存（防穿透）
-        if (cachedValue == null) {
-            // 先设置空值标记，防止缓存穿透
-            setEmptyCache(redisKey);
-            return null;
-        }
-
-        // 5. 空值标记直接返回
-        if (RedisConstant.EMPTY_VALUE.equals(cachedValue)) {
-            return null;
-        }
-
-        // 6. 正常解析返回
-        try {
-            return objectMapper.readValue(cachedValue, clazz);
-        } catch (Exception e) {
-            log.error("缓存JSON解析失败，订单ID：{}", clOrderId, e);
-            stringRedisTemplate.delete(redisKey);
-            return null;
-        }
-    }
-
-    /**
      * 带分布式锁的缓存查询（防击穿）
      */
-    public <T> T getWithLock(String clOrderId, OrderDbLoader<T> dbLoader, Class<T> clazz) {
-        String redisKey = RedisConstant.ORDER_STATUS_KEY + clOrderId;
+    public <T> T getWithLock(String securityId, OrderDbLoader<T> dbLoader, Class<T> clazz) {
+        String redisKey = RedisConstant.ORDER_QUERY_KEY+ securityId;
 
         // 1. 先查缓存
         String cachedValue = stringRedisTemplate.opsForValue().get(redisKey);
@@ -78,12 +41,12 @@ import java.util.concurrent.TimeUnit;
             try {
                 return objectMapper.readValue(cachedValue, clazz);
             } catch (Exception e) {
-                log.error("缓存解析失败，订单ID：{}", clOrderId, e);
+                log.error("缓存解析失败，股票ID：{}", securityId, e);
             }
         }
 
-        // 2. 缓存未命中，尝试获取分布式锁
-        String lockKey = "lock:order:query:" + clOrderId;
+        //TODO 2. 缓存未命中，尝试获取分布式锁
+        String lockKey = RedisConstant.DISTRIBUTED_LOCK_KEY + securityId;
         RLock lock = redissonClient.getLock(lockKey);
 
         try {
@@ -91,7 +54,7 @@ import java.util.concurrent.TimeUnit;
             boolean acquired = lock.tryLock(100, 10000, TimeUnit.MILLISECONDS);
             if (!acquired) {
                 // 获取锁失败，返回旧数据或空
-                log.warn("获取分布式锁失败，订单ID：{}", clOrderId);
+                log.warn("获取分布式锁失败，股票ID：{}", securityId);
                 return getFromCacheOrNull(redisKey, clazz);
             }
 
@@ -114,7 +77,7 @@ import java.util.concurrent.TimeUnit;
             return data;
 
         } catch (InterruptedException e) {
-            log.error("获取分布式锁被中断，订单ID：{}", clOrderId, e);
+            log.error("获取分布式锁被中断，股票ID：{}", securityId, e);
             Thread.currentThread().interrupt();
             return null;
         } catch (JsonMappingException e) {
@@ -129,27 +92,14 @@ import java.util.concurrent.TimeUnit;
     }
 
     /**
-     * 检查是否是热点订单
-     */
-    public boolean isHotOrder(String clOrderId) {
-        String hotKey = "hot:order:" + clOrderId;
-        Long count = stringRedisTemplate.opsForValue().increment(hotKey);
-        if (count != null && count == 1) {
-            // 首次访问，设置过期时间
-            stringRedisTemplate.expire(hotKey, 60, TimeUnit.SECONDS);
-        }
-        return count != null && count >= RedisConstant.HOT_ORDER_THRESHOLD;
-    }
-
-    /**
      * 设置热点订单（延长TTL）
      */
-    public void markAsHotOrder(String clOrderId) {
-        String redisKey = RedisConstant.ORDER_STATUS_KEY + clOrderId;
+    public void markAsHotOrder(String securityId) {
+        String redisKey = RedisConstant.ORDER_QUERY_KEY + securityId;
         Boolean exists = stringRedisTemplate.hasKey(redisKey);
         if (Boolean.TRUE.equals(exists)) {
             stringRedisTemplate.expire(redisKey, RedisConstant.HOT_ORDER_TTL, TimeUnit.SECONDS);
-            log.info("订单标记为热点，订单ID：{}，TTL：{}秒", clOrderId, RedisConstant.HOT_ORDER_TTL);
+            log.info("股票标记为热点，股票ID：{}，TTL：{}秒", securityId, RedisConstant.HOT_ORDER_TTL);
         }
     }
 
@@ -157,11 +107,7 @@ import java.util.concurrent.TimeUnit;
      * 布隆过滤器检查
      */
     private boolean checkBloomFilter(String clOrderId) {
-        // 这里调用你已有的布隆过滤器方法
-        // return redisSecurityService.mightContainOrderId(clOrderId);
-        // 简化实现：
-        String bloomKey = "bloom:order:ids";
-        return stringRedisTemplate.opsForValue().getBit(bloomKey, hash(clOrderId)) != null;
+        return stringRedisTemplate.opsForValue().getBit(RedisConstant.BLOOM_KEY, hash(clOrderId)) != null;
     }
 
     /**

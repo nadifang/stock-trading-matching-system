@@ -9,7 +9,7 @@ import com.stms.common.constant.OrderStatusConstant;
 import com.stms.common.constant.RedisConstant;
 import com.stms.trade.domain.dto.orderCanceledDTO;
 import com.stms.trade.domain.entity.Cancel_Order;
-import com.stms.trade.domain.entity.Order;
+import com.stms.common.domain.entity.Order;
 import com.stms.trade.mapper.orderMapper;
 import com.stms.trade.service.CancelService;
 import com.stms.trade.service.RedisSecurityService;

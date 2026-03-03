@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 
 interface TopHeaderProps {
   wsConnected?: boolean;
@@ -62,7 +62,7 @@ export default function TopHeader({
         <div className="w-full max-w-[480px] flex items-center gap-2">
           <input
             type="text"
-            placeholder={lang === "en" ? "Search order by Order ID / Symbol" : "按订单号或证券代码搜索"}
+            placeholder={lang === "en" ? "Search by Security ID" : "按证券代码搜索"}
             className="w-full h-10 rounded-lg border border-slate-300 bg-slate-50 px-3 text-sm outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400"
             value={searchValue}
             onChange={(e) => onSearchValueChange(e.target.value)}

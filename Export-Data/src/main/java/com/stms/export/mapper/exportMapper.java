@@ -1,7 +1,7 @@
 package com.stms.export.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.stms.trade.domain.entity.Order;
+import com.stms.common.domain.entity.Order;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.time.LocalDateTime;
