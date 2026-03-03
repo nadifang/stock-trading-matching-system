@@ -2,7 +2,7 @@
 import { api } from "./api/client";
 import type { CancelOrderDTO, SubmitOrderDTO, TradeReturnVO } from "./types/server";
 import { connectTradeReturnWS, disconnectTradeReturnWS } from "./services/ws";
-import BannerSection from "./components/BannerSection";
+import BannerCarousel from "./components/BannerCarousel";
 import TopHeader from "./components/TopHeader";
 
 /**
@@ -983,74 +983,85 @@ export default function App() {
         />
       </div>
 
-      <BannerSection />
+      <section className="w-[95%] mx-auto mb-6">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_minmax(630px,840px)_1fr] gap-1 items-stretch">
+          <div className="hidden lg:block w-full max-w-[280px] h-full justify-self-start rounded-2xl bg-slate-200 border border-slate-300" />
+
+          <div className="w-full aspect-[4/2]">
+            <BannerCarousel />
+          </div>
+
+          <div className="w-full lg:max-w-[280px] lg:justify-self-end">
+            <div className="bg-white p-4 rounded-lg shadow h-full grid grid-cols-1 gap-3">
+              <div className="flex flex-col">
+                <label className="text-sm text-gray-600 mb-1">{text.market}</label>
+                <select
+                  className="border p-2 rounded"
+                  value={form.market}
+                  onChange={(e) => setForm({ ...form, market: e.target.value })}
+                >
+                  <option value="XSHG">XSHG</option>
+                  <option value="XSHE">XSHE</option>
+                  <option value="BJSE">BJSE</option>
+                </select>
+              </div>
+
+              <div className="flex flex-col">
+                <label className="text-sm text-gray-600 mb-1">{text.securityId}</label>
+                <input
+                  className="border p-2 rounded"
+                  value={form.securityId}
+                  onChange={(e) => setForm({ ...form, securityId: e.target.value })}
+                />
+              </div>
+
+              <div className="flex flex-col">
+                <label className="text-sm text-gray-600 mb-1">{text.side}</label>
+                <select
+                  className="border p-2 rounded"
+                  value={form.side}
+                  onChange={(e) => setForm({ ...form, side: e.target.value as Side })}
+                >
+                  <option value="B">{text.buy}</option>
+                  <option value="S">{text.sell}</option>
+                </select>
+              </div>
+
+              <div className="flex flex-col">
+                <label className="text-sm text-gray-600 mb-1">{text.price}</label>
+                <input
+                  className="border p-2 rounded"
+                  type="number"
+                  value={form.price}
+                  onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
+                />
+              </div>
+
+              <div className="flex flex-col">
+                <label className="text-sm text-gray-600 mb-1">{text.quantity}</label>
+                <input
+                  className="border p-2 rounded"
+                  type="number"
+                  value={form.qty}
+                  onChange={(e) => setForm({ ...form, qty: Number(e.target.value) })}
+                />
+              </div>
+
+              <button
+                className={`mt-1 text-white py-2 rounded font-bold ${
+                  submitting ? "bg-blue-300 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"
+                }`}
+                onClick={submitOrder}
+                disabled={submitting}
+              >
+                {submitting ? text.submitting : text.submitOrder}
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <div className="w-[95%] mx-auto">
-        <div className="bg-white p-4 rounded-lg shadow mb-6 grid grid-cols-1 md:grid-cols-5 gap-4">
-          <div className="flex flex-col">
-            <label className="text-sm text-gray-600 mb-1">{text.market}</label>
-            <select
-              className="border p-2 rounded"
-              value={form.market}
-              onChange={(e) => setForm({ ...form, market: e.target.value })}
-            >
-              <option value="XSHG">XSHG</option>
-              <option value="XSHE">XSHE</option>
-              <option value="BJSE">BJSE</option>
-            </select>
-          </div>
-
-          <div className="flex flex-col">
-            <label className="text-sm text-gray-600 mb-1">{text.securityId}</label>
-            <input
-              className="border p-2 rounded"
-              value={form.securityId}
-              onChange={(e) => setForm({ ...form, securityId: e.target.value })}
-            />
-          </div>
-
-          <div className="flex flex-col">
-            <label className="text-sm text-gray-600 mb-1">{text.side}</label>
-            <select
-              className="border p-2 rounded"
-              value={form.side}
-              onChange={(e) => setForm({ ...form, side: e.target.value as Side })}
-            >
-              <option value="B">{text.buy}</option>
-              <option value="S">{text.sell}</option>
-            </select>
-          </div>
-
-          <div className="flex flex-col">
-            <label className="text-sm text-gray-600 mb-1">{text.price}</label>
-            <input
-              className="border p-2 rounded"
-              type="number"
-              value={form.price}
-              onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
-            />
-          </div>
-
-          <div className="flex flex-col">
-            <label className="text-sm text-gray-600 mb-1">{text.quantity}</label>
-            <input
-              className="border p-2 rounded"
-              type="number"
-              value={form.qty}
-              onChange={(e) => setForm({ ...form, qty: Number(e.target.value) })}
-            />
-          </div>
-
-          <button
-            className={`md:col-span-5 mt-2 text-white py-2 rounded font-bold ${
-              submitting ? "bg-blue-300 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"
-            }`}
-            onClick={submitOrder}
-            disabled={submitting}
-          >
-            {submitting ? text.submitting : text.submitOrder}
-          </button>
-        </div>
 
         {errorMsg && (
           <div className="bg-red-50 text-red-700 border border-red-200 px-4 py-2 rounded mb-4">
