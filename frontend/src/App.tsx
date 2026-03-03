@@ -934,6 +934,7 @@ export default function App() {
 
     if (!keyword) {
       setSearchMode("all");
+      setListReloadToken((prev) => prev + 1);
       return;
     }
 
@@ -945,6 +946,7 @@ export default function App() {
 
     if (keyword.length === 6) {
       setSearchMode("security");
+      setListReloadToken((prev) => prev + 1);
       return;
     }
 
@@ -966,7 +968,7 @@ export default function App() {
     <div
       className="p-6 min-h-screen"
       style={{
-        backgroundImage: "linear-gradient(to bottom, #dbeafe 0%, #ffffff 30%, #ffffff 100%)",
+        backgroundImage: "linear-gradient(to bottom, #93c5fd 0%, #e5f0ff 32%, #ffffff 100%)",
       }}
     >
       <div className="w-[95%] mx-auto mb-4">
@@ -1156,4 +1158,3 @@ export default function App() {
     </div>
   );
 }
-
