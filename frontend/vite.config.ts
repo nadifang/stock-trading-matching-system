@@ -14,6 +14,10 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
+      '/trade-query': {
+        target: 'http://localhost:8082',
+        changeOrigin: true,
+      },
       '/ws': {
         target: 'http://localhost:8082',
         changeOrigin: true,

@@ -77,7 +77,7 @@ interface ApiResult<T> {
 }
 
 type SearchMode = "all" | "security" | "single";
-const API_BASE = import.meta.env?.VITE_API_BASE || "/api";
+const QUERY_BASE = "/trade-query";
 
 /** 生成客户端订单号。 */
 const generateId = (): string => {
@@ -780,7 +780,7 @@ export default function App() {
       }
 
       try {
-        const resp = await fetch(`${API_BASE}/trade-query/list?${params.toString()}`, {
+        const resp = await fetch(`${QUERY_BASE}/list?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         });
@@ -826,7 +826,7 @@ export default function App() {
       params.set("clOrderId", clOrderId);
 
       try {
-        const resp = await fetch(`${API_BASE}/trade-query/query?${params.toString()}`, {
+        const resp = await fetch(`${QUERY_BASE}/query?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         });
