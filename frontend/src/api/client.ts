@@ -1,12 +1,23 @@
 import type { CancelOrderDTO, Result, SubmitOrderDTO } from "../types/server";
 
-const BASE_URL = import.meta.env?.VITE_API_BASE || "/api";
+const TRADE_BASE_URL = import.meta.env?.VITE_API_BASE || "/api";
+const USER_BASE_URL = import.meta.env?.VITE_USER_API_BASE || "/user-api";
 
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE_URL}${url}`, {
-    headers: {
-      "Content-Type": "application/json",
-    },
+export interface LoginDTO {
+  shareholderId: string;
+  password: string;
+}
+
+async function request<T>(baseUrl: string, url: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers);
+  headers.set("Content-Type", "application/json");
+  const authToken = localStorage.getItem("authToken");
+  if (authToken) {
+    headers.set("authorization", authToken);
+  }
+
+  const res = await fetch(`${baseUrl}${url}`, {
+    headers,
     credentials: "include",
     ...init,
   });
@@ -43,14 +54,20 @@ export interface CancelOrderResp {
 }
 
 export const api = {
+  login(dto: LoginDTO) {
+    return request<string>(USER_BASE_URL, "/User/login", {
+      method: "POST",
+      body: JSON.stringify(dto),
+    });
+  },
   submitOrder(dto: SubmitOrderDTO) {
-    return request<SubmitOrderResp>("/submit", {
+    return request<SubmitOrderResp>(TRADE_BASE_URL, "/trade-transmitting/submit", {
       method: "POST",
       body: JSON.stringify(dto),
     });
   },
   cancelOrder(dto: CancelOrderDTO) {
-    return request<CancelOrderResp>("/cancel", {
+    return request<CancelOrderResp>(TRADE_BASE_URL, "/trade-transmitting/cancel", {
       method: "POST",
       body: JSON.stringify(dto),
     });
