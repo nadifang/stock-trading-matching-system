@@ -307,6 +307,150 @@ const getStatusClassName = (status: OrderStatus): string => {
   }
 };
 
+interface HistoryPoint {
+  day: string;
+  buyVolume: number;
+  sellVolume: number;
+}
+
+const toSafeNum = (value: unknown): number => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+};
+
+const normalizeHistory = (raw: unknown): HistoryPoint[] => {
+  const rows = Array.isArray(raw)
+    ? raw
+    : raw && typeof raw === "object"
+      ? (raw as Record<string, unknown>).records ??
+        (raw as Record<string, unknown>).list ??
+        (raw as Record<string, unknown>).items ??
+        (raw as Record<string, unknown>).data ??
+        []
+      : [];
+
+  if (!Array.isArray(rows)) return [];
+
+  return rows
+    .map((item, index) => {
+      const row = (item ?? {}) as Record<string, unknown>;
+      const dayRaw = row.day ?? row.date ?? row.tradeDate ?? row.tradingDate;
+      const day = String(dayRaw ?? `D${index + 1}`);
+      const buyVolume = toSafeNum(
+        row.buyVolume ?? row.buyQty ?? row.buy_quantity ?? row.buy ?? row.buyAmt
+      );
+      const sellVolume = toSafeNum(
+        row.sellVolume ?? row.sellQty ?? row.sell_quantity ?? row.sell ?? row.sellAmt
+      );
+      return { day, buyVolume, sellVolume };
+    })
+    .slice(-30);
+};
+
+const buildSmoothPath = (points: Array<{ x: number; y: number }>): string => {
+  if (points.length === 0) return "";
+  if (points.length === 1) {
+    const p = points[0];
+    return `M ${p.x} ${p.y}`;
+  }
+
+  let d = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 1; i < points.length; i += 1) {
+    const prev = points[i - 1];
+    const curr = points[i];
+    const cx = (prev.x + curr.x) / 2;
+    const cy = (prev.y + curr.y) / 2;
+    d += ` Q ${prev.x} ${prev.y} ${cx} ${cy}`;
+  }
+  const last = points[points.length - 1];
+  const beforeLast = points[points.length - 2];
+  d += ` Q ${beforeLast.x} ${beforeLast.y} ${last.x} ${last.y}`;
+  return d;
+};
+
+function OrderChart({ securityId }: { securityId: string }) {
+  const [series, setSeries] = useState<HistoryPoint[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadHistory = async (): Promise<void> => {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams({ securityId });
+        const resp = await fetch(`${QUERY_BASE}/history?${params.toString()}`, {
+          method: "GET",
+          credentials: "include",
+          signal: controller.signal,
+        });
+        const raw = (await resp.json()) as unknown;
+        const payload =
+          raw && typeof raw === "object" && "success" in raw
+            ? (((raw as ApiResult<unknown>).data as unknown) ?? [])
+            : raw;
+        setSeries(normalizeHistory(payload));
+      } catch {
+        if (controller.signal.aborted) return;
+        setSeries([]);
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void loadHistory();
+    return () => controller.abort();
+  }, [securityId]);
+
+  const chart = useMemo(() => {
+    const width = 340;
+    const height = 68;
+    const padX = 4;
+    const padY = 6;
+    const data = series.length > 0 ? series : [{ day: "flat", buyVolume: 0, sellVolume: 0 }];
+    const maxValue = Math.max(
+      1,
+      ...data.map((d) => d.buyVolume),
+      ...data.map((d) => d.sellVolume)
+    );
+    const stepX = data.length > 1 ? (width - padX * 2) / (data.length - 1) : width / 2;
+    const toY = (value: number): number =>
+      height - padY - (value / maxValue) * (height - padY * 2);
+
+    const buyPoints = data.map((d, idx) => ({ x: padX + idx * stepX, y: toY(d.buyVolume) }));
+    const sellPoints = data.map((d, idx) => ({ x: padX + idx * stepX, y: toY(d.sellVolume) }));
+
+    return {
+      width,
+      height,
+      buyPath: buildSmoothPath(buyPoints),
+      sellPath: buildSmoothPath(sellPoints),
+      hasData: series.length > 0,
+    };
+  }, [series]);
+
+  return (
+    <div className="h-full w-full rounded-lg bg-slate-50/80 border border-slate-100 px-2 py-1 flex items-center justify-center">
+      {loading ? (
+        <span className="text-xs text-slate-400">Loading...</span>
+      ) : (
+        <div className="relative w-full h-full flex items-center justify-center">
+          <svg
+            viewBox={`0 0 ${chart.width} ${chart.height}`}
+            className="w-full h-full"
+            preserveAspectRatio="none"
+          >
+            <path d={chart.buyPath} fill="none" stroke="#2563eb" strokeWidth="2.2" strokeLinecap="round" />
+            <path d={chart.sellPath} fill="none" stroke="#dc2626" strokeWidth="2.2" strokeLinecap="round" />
+          </svg>
+          {!chart.hasData && <span className="absolute text-[11px] text-slate-400">暂无趋势</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * 交易员终端页面。
  */
@@ -1106,37 +1250,35 @@ export default function App() {
           </div>
         )}
 
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <table className="w-full text-left">
-            <thead className="bg-gray-100 border-b">
-              <tr>
-                <th className="p-3">{text.orderId}</th>
-                <th className="p-3">{text.symbol}</th>
-                <th className="p-3">{text.market}</th>
-                <th className="p-3">{text.side}</th>
-                <th className="p-3">{text.price}</th>
-                <th className="p-3">{text.qty}</th>
-                <th className="p-3">{text.status}</th>
-                <th className="p-3">{text.fillProgress}</th>
-                <th className="p-3">{text.action}</th>
-              </tr>
-            </thead>
+        <div className="space-y-3">
+          {paginatedOrders.map((o) => {
+            const remainingQty = Math.max(0, o.qty - o.cumQty);
+            return (
+              <div
+                key={o.clOrderId}
+                className="w-full min-h-[88px] bg-white rounded-xl shadow-sm hover:shadow-md hover:bg-slate-50 transition-all duration-200 px-4 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3"
+              >
+                <div className="w-full md:w-[22%] min-w-[180px]">
+                  <div className="text-2xl font-bold tracking-wide text-slate-900">{o.securityId}</div>
+                  <div className="text-xs text-slate-500 font-mono mt-1 truncate">{o.clOrderId}</div>
+                  <div className={`text-sm font-semibold mt-1 ${o.side === "B" ? "text-red-500" : "text-green-600"}`}>
+                    {o.side === "B" ? text.buy : text.sell} · {o.market}
+                  </div>
+                </div>
 
-            <tbody>
-              {paginatedOrders.map((o) => (
-                <tr key={o.clOrderId} className="border-b hover:bg-gray-50">
-                  <td className="p-3 text-xs font-mono">{o.clOrderId}</td>
-                  <td className="p-3">{o.securityId}</td>
-                  <td className="p-3">{o.market}</td>
+                <div className="w-full md:flex-1 h-[72px]">
+                  <OrderChart securityId={o.securityId} />
+                </div>
 
-                  <td className={`p-3 font-bold ${o.side === "B" ? "text-red-500" : "text-green-500"}`}>
-                    {o.side === "B" ? text.buy : text.sell}
-                  </td>
-
-                  <td className="p-3">{o.price}</td>
-                  <td className="p-3">{o.qty}</td>
-
-                  <td className="p-3">
+                <div className="w-full md:w-[24%] md:min-w-[220px] md:text-right">
+                  <div className="text-xs text-slate-500">剩余量</div>
+                  <div className="text-2xl font-bold text-slate-900">
+                    {remainingQty}
+                  </div>
+                  <div className="text-xs text-slate-500 mt-1">
+                    Cum: <span className="font-semibold text-slate-700">{o.cumQty}</span> / Qty: {o.qty}
+                  </div>
+                  <div className="mt-2 flex md:justify-end items-center gap-2">
                     <span
                       className={`px-2 py-1 rounded text-xs ${getStatusClassName(o.status)}`}
                       title={
@@ -1147,27 +1289,6 @@ export default function App() {
                     >
                       {statusTextMap[o.status] ?? o.status}
                     </span>
-                    {o.status === OrderStatus.Rejected && o.errorMsg && (
-                      <div className="text-xs text-red-500 mt-1 truncate max-w-[120px]">
-                        {o.errorMsg}
-                      </div>
-                    )}
-                  </td>
-
-                  <td className="p-3">
-                    {(o.status === OrderStatus.PartiallyFilled || o.status === OrderStatus.Filled) && (
-                      <span
-                        className={`font-semibold ${
-                          o.status === OrderStatus.Filled ? "text-green-600" : "text-orange-600"
-                        }`}
-                      >
-                        {o.cumQty}/{o.qty}
-                      </span>
-                    )}
-                    {o.status !== OrderStatus.PartiallyFilled && o.status !== OrderStatus.Filled && "-"}
-                  </td>
-
-                  <td className="p-3">
                     {canCancel(o) && (
                       <button
                         className="text-red-600 hover:underline text-sm"
@@ -1176,14 +1297,25 @@ export default function App() {
                         {text.cancel}
                       </button>
                     )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+                  {o.status === OrderStatus.Rejected && o.errorMsg && (
+                    <div className="text-xs text-red-500 mt-1 truncate">
+                      {o.errorMsg}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          {paginatedOrders.length === 0 && (
+            <div className="rounded-xl bg-white border border-slate-100 text-slate-500 text-sm px-4 py-8 text-center">
+              No orders
+            </div>
+          )}
         </div>
 
-        <div className="mt-4 flex items-center justify-end gap-3">
+        <div className="mt-4 flex items-center justify-center md:justify-end gap-3">
           <button
             className="px-3 py-1.5 border border-gray-300 rounded disabled:opacity-50"
             onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
