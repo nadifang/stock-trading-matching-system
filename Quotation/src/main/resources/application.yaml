@@ -1,0 +1,23 @@
+server:
+  port: 8086
+spring:
+  application:
+    name: trade_query
+  datasource:
+    url: jdbc:mysql://mysql6.sqlpub.com:3311/stock_trade?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=UTC
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: stms_one
+    password: SEnOGIyICRDI7maP
+  jackson:
+    default-property-inclusion: non_null # JSON处理时忽略非空字段
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
