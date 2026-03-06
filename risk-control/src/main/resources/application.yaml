@@ -1,11 +1,6 @@
 Server:
   port: 8084
 spring:
-  rabbitmq:
-    host: localhost
-    port: 5672
-    username: guest
-    password: guest
   application:
     name: risk-controller
   datasource:
@@ -13,6 +8,16 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: stms_one
     password: SEnOGIyICRDI7maP
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: admin
+    password: admin
+    virtual-host: /
+    listener:
+      simple:
+        prefetch: 1
+        acknowledge-mode: auto
   redis:
     host: localhost
     port: 6379
@@ -25,10 +30,10 @@ spring:
         time-between-eviction-runs: 10s
   jackson:
     default-property-inclusion: non_null # JSON处理时忽略非空字段
-rabbitmq:
-  queue:
-    order: risk.order.queue          # 监听的订单队列
-  exchange:
-    return: risk.return.exchange     # 回报交换机
-  routing-key:
-    return: risk.return.key          # 回报路由键（注意：这里改为 routing-key）
+#rabbitmq:
+#  queue:
+#    order: risk.order.queue          # 监听的订单队列
+#  exchange:
+#    return: risk.return.exchange     # 回报交换机
+#  routing-key:
+#    return: risk.return.key          # 回报路由键（注意：这里改为 routing-key）

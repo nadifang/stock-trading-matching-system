@@ -5,8 +5,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 @Data
-@Component
-@ConfigurationProperties(prefix = "rabbitmq")
+//@Component
+//@ConfigurationProperties(prefix = "rabbitmq")
 public class RabbitMQProperties {
     private QueueConfig queue = new QueueConfig();
     private ExchangeConfig exchange = new ExchangeConfig();

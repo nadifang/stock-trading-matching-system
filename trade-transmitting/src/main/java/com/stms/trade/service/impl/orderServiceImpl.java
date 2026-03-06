@@ -9,8 +9,10 @@ import com.stms.common.constant.RedisConstant;
 import com.stms.trade.domain.dto.orderDTO;
 import com.stms.common.domain.entity.Order;
 import com.stms.trade.mapper.orderMapper;
+import com.stms.trade.service.OrderEventPublisherService;
 import com.stms.trade.service.RedisSecurityService;
 import com.stms.trade.service.orderService;
+import com.stms.trade.task.OrderCreatedEvent;
 import com.stms.trade.utils.TradeRespose;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ClassPathResource;
@@ -37,6 +39,8 @@ public class orderServiceImpl extends ServiceImpl<orderMapper, Order> implements
     private StringRedisTemplate stringRedisTemplate;
     @Resource
     private RedisSecurityService redisSecurityService;
+    @Resource
+    private OrderEventPublisherService orderEventPublisherService;
 
     private static final DefaultRedisScript<Long> ORDER_SUBMIT_SCRIPT ;       //声明lua脚本
     static {
@@ -139,16 +143,16 @@ public class orderServiceImpl extends ServiceImpl<orderMapper, Order> implements
             }
 
             //5.使用RabbitMQ把订单数据发送到模拟风控系统，异步处理
-//            OrderCreatedEvent event = new OrderCreatedEvent(
-//                    orderCommand.getClOrderId(),
-//                    orderCommand.getMarket(),
-//                    orderCommand.getSecurityId(),
-//                    orderCommand.getSide(),
-//                    orderCommand.getQty(),
-//                    orderCommand.getPrice(),
-//                    orderCommand.getShareholderId()
-//            );
-//            orderEventPublisherService.publishOrderCreatedEvent(event);
+            OrderCreatedEvent event = new OrderCreatedEvent(
+                    orderCommand.getClOrderId(),
+                    orderCommand.getMarket(),
+                    orderCommand.getSecurityId(),
+                    orderCommand.getSide(),
+                    orderCommand.getQty(),
+                    orderCommand.getPrice(),
+                    orderCommand.getShareholderId()
+            );
+            orderEventPublisherService.publishOrderCreatedEvent(event);
         }
 
         //6.返回订单
