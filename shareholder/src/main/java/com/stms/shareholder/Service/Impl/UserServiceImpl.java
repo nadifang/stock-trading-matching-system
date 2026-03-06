@@ -1,7 +1,6 @@
 package com.stms.shareholder.Service.Impl;
 
 import cn.hutool.core.bean.BeanUtil;
-import cn.hutool.core.bean.copier.CopyOptions;
 import cn.hutool.core.util.RandomUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -10,10 +9,9 @@ import com.stms.common.constant.RedisConstant;
 import com.stms.common.constant.UserConstant;
 import com.stms.shareholder.Service.UserService;
 import com.stms.shareholder.domain.dto.LoginDTO;
-import com.stms.shareholder.domain.dto.Result;
+import com.stms.common.Util.Result;
 import com.stms.shareholder.domain.dto.UserDTO;
 import com.stms.shareholder.domain.entity.User;
-import com.stms.shareholder.domain.vo.ShareholderVO;
 import com.stms.shareholder.mapper.userMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -21,9 +19,6 @@ import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
 import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 

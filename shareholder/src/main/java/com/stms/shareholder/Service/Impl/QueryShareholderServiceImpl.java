@@ -1,14 +1,11 @@
 package com.stms.shareholder.Service.Impl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stms.common.constant.RedisConstant;
-import com.stms.query.service.OrderQueryService;
 import com.stms.shareholder.Service.QueryShareholderService;
 import com.stms.shareholder.Service.UserService;
 import com.stms.shareholder.Utils.UserHolder;
-import com.stms.shareholder.domain.dto.Result;
+import com.stms.common.Util.Result;
 import com.stms.shareholder.domain.dto.UserDTO;
 import com.stms.shareholder.domain.entity.User;
 import com.stms.shareholder.domain.vo.ShareholderVO;

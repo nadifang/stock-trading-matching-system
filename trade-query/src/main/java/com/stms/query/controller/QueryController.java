@@ -4,6 +4,7 @@ import cn.hutool.core.bean.BeanUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.stms.common.constant.SystemConstant;
 import com.stms.query.domain.vo.OrderDetailVO;
+import com.stms.query.service.OrderHistoryService;
 import com.stms.query.service.OrderQueryService;
 import com.stms.common.domain.entity.Order;
 import lombok.extern.slf4j.Slf4j;
@@ -20,6 +21,8 @@ public class QueryController {
 
     @Resource
     private OrderQueryService orderQueryService;
+    @Resource
+    private OrderHistoryService orderHistoryService;
 
     @GetMapping("/query")
     public OrderDetailVO query(@RequestParam String securityId) {
@@ -40,5 +43,10 @@ public class QueryController {
             list.add(orderDetailVO);
         }
         return list;
+    }
+
+    @GetMapping("/history")
+    public Object getHistory(@RequestParam String securityId){
+        return orderHistoryService.getHistory(securityId);
     }
 }

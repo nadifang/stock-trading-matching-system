@@ -3,7 +3,7 @@ package com.stms.shareholder.controller;
 import com.stms.shareholder.Service.QueryShareholderService;
 import com.stms.shareholder.Service.UserService;
 import com.stms.shareholder.domain.dto.LoginDTO;
-import com.stms.shareholder.domain.dto.Result;
+import com.stms.common.Util.Result;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;

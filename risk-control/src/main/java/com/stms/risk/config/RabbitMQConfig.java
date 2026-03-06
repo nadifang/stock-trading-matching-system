@@ -6,26 +6,26 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-@Configuration
+//@Configuration
 public class RabbitMQConfig {
 
-    @Autowired
+    //@Autowired
     private RabbitMQProperties rabbitMQProperties;
 
     // 风控模块监听的队列
-    @Bean
+    //@Bean
     public Queue riskOrderCreatedQueue() {
         return QueueBuilder.durable(rabbitMQProperties.getQueue().getOrder()).build();
     }
 
     // 回报交换机
-    @Bean
+   // @Bean
     public DirectExchange riskReturnExchange() {
         return new DirectExchange(rabbitMQProperties.getExchange().getReturnExchange());
     }
 
     // 绑定到交易模块的交换机（直接使用交易模块的交换机名称常量）
-    @Bean
+    //@Bean
     public Binding bindingRiskOrderCreatedQueue(Queue riskOrderCreatedQueue) {
         return BindingBuilder.bind(riskOrderCreatedQueue)
                 .to(new DirectExchange(RabbitMQConstant.TRADE_EXCHANGE))
