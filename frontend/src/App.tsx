@@ -461,7 +461,6 @@ export default function App() {
   const [activeSearchValue, setActiveSearchValue] = useState("");
   const [searchMode, setSearchMode] = useState<SearchMode>("all");
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
   const [pageSize] = useState(10);
   const [listReloadToken, setListReloadToken] = useState(0);
   const [submitting, setSubmitting] = useState(false);
@@ -656,6 +655,7 @@ export default function App() {
    */
   const submitOrder = async (): Promise<void> => {
     setErrorMsg(null);
+    setCurrentPage(1);
     const newOrder: Order = {
       ...form,
       clOrderId: generateId(),
@@ -964,7 +964,6 @@ export default function App() {
         const payload = unwrapApiData<unknown>(raw);
 
         let rows: unknown[] = [];
-        let pages = 1;
         if (Array.isArray(payload)) {
           rows = payload;
         } else if (payload && typeof payload === "object") {
@@ -972,12 +971,6 @@ export default function App() {
           const candidates = [data.records, data.list, data.items, data.content];
           const found = candidates.find(Array.isArray);
           rows = Array.isArray(found) ? found : [];
-          const pagesRaw = Number(data.totalPages ?? data.pages);
-          const totalRaw = Number(data.total);
-          pages = Number.isFinite(pagesRaw) && pagesRaw > 0 ? pagesRaw : 1;
-          if (pages === 1 && Number.isFinite(totalRaw) && totalRaw > 0) {
-            pages = Math.max(1, Math.ceil(totalRaw / pageSize));
-          }
         }
 
         const safeOrders = rows.map((item) =>
@@ -985,12 +978,10 @@ export default function App() {
         );
         setErrorMsg(null);
         setOrders(safeOrders);
-        setTotalPages(Math.max(1, pages));
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "Query list failed";
         setErrorMsg(msg);
         setOrders([]);
-        setTotalPages(1);
       }
     },
     [pageSize, toOrder, unwrapApiData]
@@ -1014,12 +1005,10 @@ export default function App() {
             : null;
         setErrorMsg(null);
         setOrders(order ? [order] : []);
-        setTotalPages(1);
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "Query order failed";
         setErrorMsg(msg);
         setOrders([]);
-        setTotalPages(1);
       }
     },
     [toOrder, unwrapApiData]
@@ -1093,14 +1082,26 @@ export default function App() {
     [lang]
   );
 
-  const paginatedOrders = useMemo(() => orders, [orders]);
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(orders.length / pageSize)),
+    [orders.length, pageSize]
+  );
+
+  const paginatedOrders = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return orders.slice(start, start + pageSize);
+  }, [currentPage, orders, pageSize]);
+
+  useEffect(() => {
+    setCurrentPage((prev) => Math.min(prev, totalPages));
+  }, [totalPages]);
 
   useEffect(() => {
     if (searchMode === "single") return;
     const securityId =
       searchMode === "security" && activeSearchValue.length === 6 ? activeSearchValue : undefined;
-    void fetchOrderList(currentPage, securityId);
-  }, [activeSearchValue, currentPage, fetchOrderList, searchMode, listReloadToken]);
+    void fetchOrderList(1, securityId);
+  }, [activeSearchValue, fetchOrderList, searchMode, listReloadToken]);
 
   const onSearch = useCallback(async () => {
     const keyword = searchValue.trim();
@@ -1128,7 +1129,6 @@ export default function App() {
 
     setSearchMode("all");
     setOrders([]);
-    setTotalPages(1);
   }, [fetchSingleOrder, searchValue]);
 
   const onClearSearch = useCallback(() => {

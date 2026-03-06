@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import LoginForm from "./LoginForm";
 import RegisterForm from "./RegisterForm";
+import { api } from "../../api/client";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -15,7 +16,7 @@ export default function AuthModal({
   isOpen,
   onClose,
   onLoginSuccess,
-  onRegisterSuccess,
+  onRegisterSuccess: _onRegisterSuccess,
   lang,
   initialTab = 'login',
 }: AuthModalProps) {
@@ -37,29 +38,18 @@ export default function AuthModal({
     setError(null);
   };
 
-  // 模拟注册用户存储
-  const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
-
   const handleLogin = async (shareholderId: string, password: string) => {
     setIsLoading(true);
     setError(null);
     try {
-      // 模拟登录API调用
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      
-      // 检查用户是否已注册
-      const user = registeredUsers.find((u: any) => u.shareholderId === shareholderId && u.password === password);
-      if (!user) {
-        throw new Error('Invalid credentials');
-      }
-      
-      // 登录成功，存储令牌
-      localStorage.setItem('authToken', 'mock-token');
+      const token = await api.login({ shareholderId, password });
+      localStorage.setItem('authToken', token);
       localStorage.setItem('shareholderId', shareholderId);
       onLoginSuccess();
       onClose();
-    } catch (err) {
-      setError(lang === 'en' ? 'Login failed, please check your credentials' : '登录失败，请检查股东号和密码');
+    } catch (err: unknown) {
+      const fallbackMsg = lang === "en" ? "Login failed, please check your credentials" : "登录失败，请检查股东号和密码";
+      setError(err instanceof Error ? err.message : fallbackMsg);
     } finally {
       setIsLoading(false);
     }
@@ -73,29 +63,14 @@ export default function AuthModal({
         setError(lang === 'en' ? 'Passwords do not match' : '密码不匹配');
         return;
       }
-      
-      // 检查用户是否已存在
-      const existingUser = registeredUsers.find((u: any) => u.shareholderId === shareholderId);
-      if (existingUser) {
-        setError(lang === 'en' ? 'User already exists' : '用户已存在');
-        return;
-      }
-      
-      // 模拟注册API调用
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      
-      // 注册成功，存储用户信息
-      const newUser = { shareholderId, password, name };
-      const updatedUsers = [...registeredUsers, newUser];
-      localStorage.setItem('registeredUsers', JSON.stringify(updatedUsers));
-      
-      // 存储令牌
-      localStorage.setItem('authToken', 'mock-token');
-      localStorage.setItem('shareholderId', shareholderId);
-      onRegisterSuccess();
-      onClose();
-    } catch (err) {
-      setError(lang === 'en' ? 'Registration failed, please try again' : '注册失败，请重试');
+
+      void shareholderId;
+      void password;
+      void name;
+      setError(lang === "en" ? "Register API is not available yet" : "后端注册接口暂未开放");
+    } catch (err: unknown) {
+      const fallbackMsg = lang === "en" ? "Registration failed, please try again" : "注册失败，请重试";
+      setError(err instanceof Error ? err.message : fallbackMsg);
     } finally {
       setIsLoading(false);
     }
