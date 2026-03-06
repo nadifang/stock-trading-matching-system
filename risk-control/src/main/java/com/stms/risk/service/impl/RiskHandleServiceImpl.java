@@ -4,7 +4,7 @@ import com.stms.risk.mapper.OrderMapper;
 import com.stms.risk.mapper.ShareholderGroupMapper;
 import com.stms.risk.service.RiskHandleService;
 import com.stms.risk.service.RiskReturnService;
-import com.stms.risk.task.OrderCreatedEvent;
+import com.stms.trade.task.OrderCreatedEvent;
 import com.stms.risk.entity.OrderEntity;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,11 +35,11 @@ public class RiskHandleServiceImpl implements RiskHandleService {
 
         // 1. 查询股东所属组
         String groupId = shareholderGroupMapper.findGroupIdByShareholderId(shareholderId);
-        if (groupId == null) {
-            log.info("Shareholder {} not in any group, order passed", shareholderId);
-            passToNextModule(event);
-            return;
-        }
+//        if (groupId == null) {
+//            log.info("Shareholder {} not in any group, order passed", shareholderId);
+//            passToNextModule(event);
+//            return;
+//        }
 
         // 2. 获取组内所有股东ID
         List<String> shareholderIdsInGroup = shareholderGroupMapper.findShareholderIdsByGroupId(groupId);

@@ -2,7 +2,7 @@ package com.stms.risk.listener;
 
 import com.stms.common.constant.RabbitMQConstant;
 import com.stms.risk.service.RiskHandleService;
-import com.stms.risk.task.OrderCreatedEvent;
+import com.stms.trade.task.OrderCreatedEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitHandler;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;

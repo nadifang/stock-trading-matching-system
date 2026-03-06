@@ -1,7 +1,7 @@
 package com.stms.risk.service.impl;
 
 import com.stms.risk.service.RiskReturnService;
-import com.stms.risk.task.OrderCreatedEvent;
+import com.stms.trade.task.OrderCreatedEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
