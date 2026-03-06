@@ -1,9 +1,10 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿﻿﻿﻿﻿﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api/client";
 import type { CancelOrderDTO, SubmitOrderDTO, TradeReturnVO } from "./types/server";
 import { connectTradeReturnWS, disconnectTradeReturnWS } from "./services/ws";
 import BannerCarousel from "./components/BannerCarousel";
 import TopHeader from "./components/TopHeader";
+import MarketData from "./components/MarketData";
 import AuthModal from "./components/auth/AuthModal";
 
 /**
@@ -1022,7 +1023,11 @@ export default function App() {
 
       <section className="w-[95%] mx-auto mb-6">
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_minmax(630px,840px)_1fr] gap-1 items-stretch">
-          <div className="hidden lg:block w-full max-w-[280px] h-full justify-self-start rounded-2xl bg-slate-200 border border-slate-300" />
+          <div className="hidden lg:block w-full max-w-[280px] h-[500px] justify-self-start">
+            <div className="h-full overflow-y-auto">
+              <MarketData lang={lang} isAdmin={false} />
+            </div>
+          </div>
 
           <div className="w-full aspect-[4/2]">
             <BannerCarousel />
