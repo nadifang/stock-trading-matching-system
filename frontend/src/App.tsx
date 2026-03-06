@@ -462,6 +462,7 @@ export default function App() {
   const [searchMode, setSearchMode] = useState<SearchMode>("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(10);
+  const [totalOrders, setTotalOrders] = useState<number | null>(null);
   const [listReloadToken, setListReloadToken] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -656,6 +657,7 @@ export default function App() {
   const submitOrder = async (): Promise<void> => {
     setErrorMsg(null);
     setCurrentPage(1);
+    setTotalOrders((prev) => (prev === null ? null : prev + 1));
     const newOrder: Order = {
       ...form,
       clOrderId: generateId(),
@@ -664,7 +666,7 @@ export default function App() {
       execPrice: 0,
       canceledQty: 0,
     };
-    setOrders((prev) => [newOrder, ...prev]);
+    setOrders((prev) => [newOrder, ...prev].slice(0, pageSize));
 
     const payload: SubmitOrderDTO = {
       clOrderId: newOrder.clOrderId,
@@ -964,10 +966,17 @@ export default function App() {
         const payload = unwrapApiData<unknown>(raw);
 
         let rows: unknown[] = [];
+        let nextTotalOrders: number | null = null;
         if (Array.isArray(payload)) {
           rows = payload;
         } else if (payload && typeof payload === "object") {
           const data = payload as Record<string, unknown>;
+          const totalRaw = Number(
+            data.total ?? data.totalCount ?? data.totalElements ?? data.count
+          );
+          if (Number.isFinite(totalRaw) && totalRaw >= 0) {
+            nextTotalOrders = totalRaw;
+          }
           const candidates = [data.records, data.list, data.items, data.content];
           const found = candidates.find(Array.isArray);
           rows = Array.isArray(found) ? found : [];
@@ -978,10 +987,12 @@ export default function App() {
         );
         setErrorMsg(null);
         setOrders(safeOrders);
+        setTotalOrders(nextTotalOrders);
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "Query list failed";
         setErrorMsg(msg);
         setOrders([]);
+        setTotalOrders(0);
       }
     },
     [pageSize, toOrder, unwrapApiData]
@@ -1005,10 +1016,12 @@ export default function App() {
             : null;
         setErrorMsg(null);
         setOrders(order ? [order] : []);
+        setTotalOrders(order ? 1 : 0);
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "Query order failed";
         setErrorMsg(msg);
         setOrders([]);
+        setTotalOrders(0);
       }
     },
     [toOrder, unwrapApiData]
@@ -1082,26 +1095,29 @@ export default function App() {
     [lang]
   );
 
-  const totalPages = useMemo(
-    () => Math.max(1, Math.ceil(orders.length / pageSize)),
-    [orders.length, pageSize]
-  );
+  const knownTotalPages = useMemo(() => {
+    if (searchMode === "single") return 1;
+    if (totalOrders === null) return null;
+    return Math.max(1, Math.ceil(totalOrders / pageSize));
+  }, [pageSize, searchMode, totalOrders]);
 
-  const paginatedOrders = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return orders.slice(start, start + pageSize);
-  }, [currentPage, orders, pageSize]);
+  const canGoNext = useMemo(() => {
+    if (searchMode === "single") return false;
+    if (knownTotalPages !== null) return currentPage < knownTotalPages;
+    return orders.length >= pageSize;
+  }, [currentPage, knownTotalPages, orders.length, pageSize, searchMode]);
 
   useEffect(() => {
-    setCurrentPage((prev) => Math.min(prev, totalPages));
-  }, [totalPages]);
+    if (knownTotalPages === null) return;
+    setCurrentPage((prev) => Math.min(prev, knownTotalPages));
+  }, [knownTotalPages]);
 
   useEffect(() => {
     if (searchMode === "single") return;
     const securityId =
       searchMode === "security" && activeSearchValue.length === 6 ? activeSearchValue : undefined;
-    void fetchOrderList(1, securityId);
-  }, [activeSearchValue, fetchOrderList, searchMode, listReloadToken]);
+    void fetchOrderList(currentPage, securityId);
+  }, [activeSearchValue, currentPage, fetchOrderList, searchMode, listReloadToken]);
 
   const onSearch = useCallback(async () => {
     const keyword = searchValue.trim();
@@ -1111,6 +1127,7 @@ export default function App() {
 
     if (!keyword) {
       setSearchMode("all");
+      setTotalOrders(null);
       setListReloadToken((prev) => prev + 1);
       return;
     }
@@ -1123,12 +1140,14 @@ export default function App() {
 
     if (keyword.length === 6) {
       setSearchMode("security");
+      setTotalOrders(null);
       setListReloadToken((prev) => prev + 1);
       return;
     }
 
     setSearchMode("all");
     setOrders([]);
+    setTotalOrders(0);
   }, [fetchSingleOrder, searchValue]);
 
   const onClearSearch = useCallback(() => {
@@ -1137,6 +1156,7 @@ export default function App() {
     setActiveSearchValue("");
     setSearchMode("all");
     setCurrentPage(1);
+    setTotalOrders(null);
     setListReloadToken((prev) => prev + 1);
   }, []);
 
@@ -1251,7 +1271,7 @@ export default function App() {
         )}
 
         <div className="space-y-3">
-          {paginatedOrders.map((o) => {
+          {orders.map((o) => {
             const remainingQty = Math.max(0, o.qty - o.cumQty);
             return (
               <div
@@ -1308,7 +1328,7 @@ export default function App() {
             );
           })}
 
-          {paginatedOrders.length === 0 && (
+          {orders.length === 0 && (
             <div className="rounded-xl bg-white border border-slate-100 text-slate-500 text-sm px-4 py-8 text-center">
               No orders
             </div>
@@ -1324,12 +1344,12 @@ export default function App() {
             Previous
           </button>
           <span className="text-sm text-gray-700">
-            Page {currentPage} / {totalPages}
+            Page {currentPage} / {knownTotalPages ?? "?"}
           </span>
           <button
             className="px-3 py-1.5 border border-gray-300 rounded disabled:opacity-50"
-            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-            disabled={searchMode === "single" || currentPage === totalPages}
+            onClick={() => setCurrentPage((p) => p + 1)}
+            disabled={!canGoNext}
           >
             Next
           </button>
