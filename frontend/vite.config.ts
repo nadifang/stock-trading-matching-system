@@ -23,6 +23,11 @@ export default defineConfig({
         target: 'http://localhost:8082',
         changeOrigin: true,
       },
+      '/quotation-api': {
+        target: 'http://localhost:8086',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/quotation-api/, ''),
+      },
       '/ws': {
         target: 'http://localhost:8087',
         changeOrigin: true,

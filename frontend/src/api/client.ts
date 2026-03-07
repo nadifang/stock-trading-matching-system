@@ -2,16 +2,27 @@ import type { CancelOrderDTO, Result, SubmitOrderDTO } from "../types/server";
 
 const TRADE_BASE_URL = import.meta.env?.VITE_API_BASE || "/api";
 const USER_BASE_URL = import.meta.env?.VITE_USER_API_BASE || "/user-api";
+const QUOTATION_BASE_URL = import.meta.env?.VITE_QUOTATION_API_BASE || "/quotation-api";
 
 export interface LoginDTO {
   shareholderId: string;
   password: string;
 }
 
-async function request<T>(baseUrl: string, url: string, init?: RequestInit): Promise<T> {
+interface RequestOptions {
+  withAuth?: boolean;
+}
+
+async function request<T>(
+  baseUrl: string,
+  url: string,
+  init?: RequestInit,
+  options: RequestOptions = {}
+): Promise<T> {
+  const { withAuth = false } = options;
   const headers = new Headers(init?.headers);
   headers.set("Content-Type", "application/json");
-  const authToken = localStorage.getItem("authToken");
+  const authToken = withAuth ? localStorage.getItem("authToken") : null;
   if (authToken) {
     headers.set("authorization", authToken);
   }
@@ -53,23 +64,78 @@ export interface CancelOrderResp {
   rejectCode?: number;
 }
 
+export interface PublishQuotationDTO {
+  market: string;
+  securityId: string;
+  bidPrice: number;
+  askPrice: number;
+}
+
+export interface ShareholderInfoItem {
+  market: string;
+  securityId: string;
+  side: string;
+  qty: number;
+  price: number;
+  status: string;
+  cumQty: number;
+  canceledQty: number;
+  remainingQty: number;
+  tradedAmount: number;
+  createTime?: string;
+}
+
 export const api = {
   login(dto: LoginDTO) {
     return request<string>(USER_BASE_URL, "/User/login", {
       method: "POST",
       body: JSON.stringify(dto),
-    });
+    }, { withAuth: false });
+  },
+  getUserInfo() {
+    return request<ShareholderInfoItem[]>(USER_BASE_URL, "/User/getInfo", {
+      method: "POST",
+    }, { withAuth: true });
   },
   submitOrder(dto: SubmitOrderDTO) {
     return request<SubmitOrderResp>(TRADE_BASE_URL, "/trade-transmitting/submit", {
       method: "POST",
       body: JSON.stringify(dto),
-    });
+    }, { withAuth: false });
   },
   cancelOrder(dto: CancelOrderDTO) {
     return request<CancelOrderResp>(TRADE_BASE_URL, "/trade-transmitting/cancel", {
       method: "POST",
       body: JSON.stringify(dto),
+    }, { withAuth: false });
+  },
+  async publishQuotation(dto: PublishQuotationDTO) {
+    const res = await fetch(`${QUOTATION_BASE_URL}/quotation/publishQuotation`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify(dto),
     });
+    if (!res.ok) {
+      throw new Error(`请求失败(${res.status})`);
+    }
+
+    const text = await res.text();
+    if (!text.trim()) return null;
+
+    const parsed = JSON.parse(text) as Result<unknown>;
+    if (parsed && typeof parsed === "object" && "success" in parsed && parsed.success === false) {
+      let msg = "请求失败";
+      if (parsed.errorMsg) {
+        msg =
+          typeof parsed.errorMsg === "string"
+            ? parsed.errorMsg
+            : parsed.errorMsg.rejectText || msg;
+      }
+      throw new Error(msg);
+    }
+    return parsed;
   },
 };
