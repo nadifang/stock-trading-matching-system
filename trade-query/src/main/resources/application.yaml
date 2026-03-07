@@ -1,5 +1,5 @@
 server:
-  port: 8082
+  port: 8062
 spring:
   application:
     name: trade_query

@@ -11,15 +11,13 @@ import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
-@RabbitListener(queues  = RabbitMQConstant.TRANSMIT_QUEUE_NAME)
 public class OrderCreatedEventListener {
 
     @Autowired
     private RiskHandleService riskHandleService;
 
-    @RabbitHandler
+    @RabbitListener(queues  = RabbitMQConstant.TRANSMIT_QUEUE_NAME)
     public void handleOrderCreated(OrderCreatedEvent event) {
-        log.info("Received order created event: {}", event);
         try {
             log.info("Processing order: {}", event);
             riskHandleService.processOrder(event);

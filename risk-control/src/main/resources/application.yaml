@@ -1,5 +1,5 @@
 Server:
-  port: 8084
+  port: 8064
 spring:
   application:
     name: risk-controller
