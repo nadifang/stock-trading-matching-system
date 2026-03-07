@@ -33,6 +33,11 @@ export default defineConfig({
         changeOrigin: true,
         ws: true,
       },
+      '/export-data-api': {
+        target: 'http://129.211.187.179:8065',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/export-data-api/, '/export-data'),
+      },
     },
   },
 })

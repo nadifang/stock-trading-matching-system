@@ -1,4 +1,4 @@
-﻿﻿import { useState } from "react";
+﻿import { useState } from "react";
 
 interface TopHeaderProps {
   wsConnected?: boolean;
@@ -15,6 +15,7 @@ interface TopHeaderProps {
   onRegisterClick?: () => void;
   onLogoutClick?: () => void;
   onUserClick?: () => void;
+  onAnalyseClick?: () => void;
 }
 
 function LogoFallback() {
@@ -40,6 +41,7 @@ export default function TopHeader({
   onRegisterClick,
   onLogoutClick,
   onUserClick,
+  onAnalyseClick,
 }: TopHeaderProps) {
   const [logoLoadError, setLogoLoadError] = useState(false);
 
@@ -129,6 +131,13 @@ export default function TopHeader({
           </>
         ) : (
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="h-9 px-3 rounded-lg border border-slate-300 text-sm text-slate-700 hover:bg-slate-50"
+              onClick={onAnalyseClick}
+            >
+              Analyse
+            </button>
             <button
               type="button"
               className="h-9 px-2 rounded-lg border border-blue-200 bg-blue-50 text-sm text-blue-700 hover:bg-blue-100"

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 interface LoginFormProps {
   onLogin: (shareholderId: string, password: string) => Promise<void>;
@@ -17,12 +17,6 @@ export default function LoginForm({
 }: LoginFormProps) {
   const [shareholderId, setShareholderId] = useState('');
   const [password, setPassword] = useState('');
-  const [localError, setLocalError] = useState<string | null>(null);
-
-  // 当error prop变化时，更新本地错误状态
-  useEffect(() => {
-    setLocalError(null);
-  }, [error]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,9 +26,9 @@ export default function LoginForm({
   return (
     <div className="space-y-4">
       <h2 className="text-xl font-bold text-center">{lang === 'en' ? 'Login' : '登录'}</h2>
-      {(error || localError) && (
+      {error && (
         <div className="bg-red-50 text-red-700 p-2 rounded">
-          {error || localError}
+          {error}
         </div>
       )}
       <form onSubmit={handleSubmit} className="space-y-3">

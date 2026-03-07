@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 interface RegisterFormProps {
   onRegister: (shareholderId: string, password: string, confirmPassword: string, name: string) => Promise<void>;
@@ -20,11 +20,6 @@ export default function RegisterForm({
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
-
-  // 当error prop变化时，更新本地错误状态
-  useEffect(() => {
-    setLocalError(null);
-  }, [error]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,7 +47,10 @@ export default function RegisterForm({
           <input
             type="text"
             value={shareholderId}
-            onChange={(e) => setShareholderId(e.target.value)}
+            onChange={(e) => {
+              setShareholderId(e.target.value);
+              if (localError) setLocalError(null);
+            }}
             className="w-full px-3 py-2 border border-gray-300 rounded-md"
             placeholder={lang === 'en' ? 'Enter shareholder ID' : '请输入股东号'}
             required
@@ -65,7 +63,10 @@ export default function RegisterForm({
           <input
             type="text"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => {
+              setName(e.target.value);
+              if (localError) setLocalError(null);
+            }}
             className="w-full px-3 py-2 border border-gray-300 rounded-md"
             placeholder={lang === 'en' ? 'Enter name' : '请输入姓名'}
             required
@@ -78,7 +79,10 @@ export default function RegisterForm({
           <input
             type="password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              if (localError) setLocalError(null);
+            }}
             className="w-full px-3 py-2 border border-gray-300 rounded-md"
             placeholder={lang === 'en' ? 'Enter password' : '请输入密码'}
             required
@@ -91,7 +95,10 @@ export default function RegisterForm({
           <input
             type="password"
             value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
+            onChange={(e) => {
+              setConfirmPassword(e.target.value);
+              if (localError) setLocalError(null);
+            }}
             className="w-full px-3 py-2 border border-gray-300 rounded-md"
             placeholder={lang === 'en' ? 'Confirm password' : '请确认密码'}
             required

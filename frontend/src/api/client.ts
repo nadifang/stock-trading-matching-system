@@ -3,6 +3,7 @@ import type { CancelOrderDTO, Result, SubmitOrderDTO } from "../types/server";
 const TRADE_BASE_URL = import.meta.env?.VITE_API_BASE || "/api";
 const USER_BASE_URL = import.meta.env?.VITE_USER_API_BASE || "/user-api";
 const QUOTATION_BASE_URL = import.meta.env?.VITE_QUOTATION_API_BASE || "/quotation-api";
+const EXPORT_BASE_URL = import.meta.env?.VITE_EXPORT_API_BASE || "/export-data-api";
 
 export interface LoginDTO {
   shareholderId: string;
@@ -85,6 +86,56 @@ export interface ShareholderInfoItem {
   createTime?: string;
 }
 
+export interface ExportTop10Response {
+  securityId?: string;
+  shareholderId?: string;
+  amount?: string;
+  cumQty?: string;
+}
+
+const unwrapResult = <T>(raw: unknown): T => {
+  if (raw && typeof raw === "object" && "success" in raw) {
+    const wrapped = raw as Result<T>;
+    if (!wrapped.success) {
+      let msg = "请求失败";
+      if (wrapped.errorMsg) {
+        if (typeof wrapped.errorMsg === "string") {
+          msg = wrapped.errorMsg;
+        } else if (typeof wrapped.errorMsg === "object" && wrapped.errorMsg.rejectText) {
+          msg = wrapped.errorMsg.rejectText;
+        }
+      }
+      throw new Error(msg);
+    }
+    return wrapped.data as T;
+  }
+  return raw as T;
+};
+
+const buildTimeQuery = (startTime?: string, endTime?: string): string => {
+  const params = new URLSearchParams();
+  if (startTime) params.set("startTime", startTime);
+  if (endTime) params.set("endTime", endTime);
+  const query = params.toString();
+  return query ? `?${query}` : "";
+};
+
+async function requestExportData(
+  path: string,
+  startTime?: string,
+  endTime?: string
+): Promise<ExportTop10Response> {
+  const res = await fetch(`${EXPORT_BASE_URL}${path}${buildTimeQuery(startTime, endTime)}`, {
+    method: "GET",
+    credentials: "include",
+  });
+  if (!res.ok) {
+    throw new Error(`请求失败(${res.status})`);
+  }
+  const raw = (await res.json()) as unknown;
+  return unwrapResult<ExportTop10Response>(raw);
+}
+
 export const api = {
   login(dto: LoginDTO) {
     return request<string>(USER_BASE_URL, "/User/login", {
@@ -137,5 +188,14 @@ export const api = {
       throw new Error(msg);
     }
     return parsed;
+  },
+  getTop10Qty(startTime?: string, endTime?: string) {
+    return requestExportData("/qty", startTime, endTime);
+  },
+  getTop10SecurityAmount(startTime?: string, endTime?: string) {
+    return requestExportData("/securityId", startTime, endTime);
+  },
+  getTop10ShareholderAmount(startTime?: string, endTime?: string) {
+    return requestExportData("/shareholderId", startTime, endTime);
   },
 };

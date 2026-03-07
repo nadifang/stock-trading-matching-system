@@ -321,6 +321,12 @@ interface MyStockSummary {
   totalOrderCount: number;
 }
 
+interface AnalysisDataState {
+  qtySeries: number[];
+  securityAmountSeries: number[];
+  shareholderAmountSeries: number[];
+}
+
 const toSafeNum = (value: unknown): number => {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
@@ -355,6 +361,12 @@ const normalizeHistory = (raw: unknown): HistoryPoint[] => {
     .slice(-30);
 };
 
+const toNumberSeries = (csv: string | undefined): number[] =>
+  String(csv ?? "")
+    .split(",")
+    .map((item) => Number(item.trim()))
+    .filter((n) => Number.isFinite(n));
+
 const buildSmoothPath = (points: Array<{ x: number; y: number }>): string => {
   if (points.length === 0) return "";
   if (points.length === 1) {
@@ -375,6 +387,49 @@ const buildSmoothPath = (points: Array<{ x: number; y: number }>): string => {
   d += ` Q ${beforeLast.x} ${beforeLast.y} ${last.x} ${last.y}`;
   return d;
 };
+
+function ProfileLineChart({
+  title,
+  color,
+  values,
+  emptyText,
+}: {
+  title: string;
+  color: string;
+  values: number[];
+  emptyText: string;
+}) {
+  const width = 260;
+  const height = 72;
+  const padX = 6;
+  const padY = 8;
+  const data = values.length > 0 ? values : [0];
+  const maxValue = Math.max(...data);
+  const minValue = Math.min(...data);
+  const range = Math.max(1, maxValue - minValue);
+  const stepX = data.length > 1 ? (width - padX * 2) / (data.length - 1) : width / 2;
+  const toY = (value: number): number =>
+    height - padY - ((value - minValue) / range) * (height - padY * 2);
+  const points = data.map((value, idx) => ({ x: padX + idx * stepX, y: toY(value) }));
+  const path = buildSmoothPath(points);
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+      <div className="text-xs text-slate-600 mb-1">{title}</div>
+      <div className="h-[72px]">
+        {values.length === 0 ? (
+          <div className="h-full flex items-center justify-center text-xs text-slate-400">
+            {emptyText}
+          </div>
+        ) : (
+          <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full" preserveAspectRatio="none">
+            <path d={path} fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" />
+          </svg>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function OrderChart({ securityId }: { securityId: string }) {
   const [series, setSeries] = useState<HistoryPoint[]>([]);
@@ -481,9 +536,17 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(!!localStorage.getItem('authToken'));
   const [currentUser, setCurrentUser] = useState<string | null>(localStorage.getItem('shareholderId'));
   const [showProfilePage, setShowProfilePage] = useState(false);
+  const [showAnalysePage, setShowAnalysePage] = useState(false);
   const [userInfoRows, setUserInfoRows] = useState<ShareholderInfoItem[]>([]);
   const [loadingUserInfo, setLoadingUserInfo] = useState(false);
   const [userInfoError, setUserInfoError] = useState<string | null>(null);
+  const [analysisData, setAnalysisData] = useState<AnalysisDataState>({
+    qtySeries: [],
+    securityAmountSeries: [],
+    shareholderAmountSeries: [],
+  });
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
   const cancelingOrderIdsRef = useRef<Set<string>>(new Set());
   const cancelPrevStatusRef = useRef<Map<string, OrderStatus>>(new Map());
 
@@ -908,8 +971,15 @@ export default function App() {
     setIsLoggedIn(false);
     setCurrentUser(null);
     setShowProfilePage(false);
+    setShowAnalysePage(false);
     setUserInfoRows([]);
     setUserInfoError(null);
+    setAnalysisError(null);
+    setAnalysisData({
+      qtySeries: [],
+      securityAmountSeries: [],
+      shareholderAmountSeries: [],
+    });
     setForm((prev) => ({
       ...prev,
       shareholderId: "",
@@ -938,12 +1008,50 @@ export default function App() {
 
   const handleOpenProfile = useCallback(() => {
     if (!isLoggedIn) return;
+    setShowAnalysePage(false);
     setShowProfilePage(true);
     void loadUserInfo();
   }, [isLoggedIn, loadUserInfo]);
 
   const handleCloseProfile = useCallback(() => {
     setShowProfilePage(false);
+  }, []);
+
+  const loadAnalysisData = useCallback(async () => {
+    setAnalysisLoading(true);
+    setAnalysisError(null);
+    try {
+      const [qtyResp, securityResp, shareholderResp] = await Promise.all([
+        api.getTop10Qty(),
+        api.getTop10SecurityAmount(),
+        api.getTop10ShareholderAmount(),
+      ]);
+      setAnalysisData({
+        qtySeries: toNumberSeries(qtyResp?.cumQty),
+        securityAmountSeries: toNumberSeries(securityResp?.amount),
+        shareholderAmountSeries: toNumberSeries(shareholderResp?.amount),
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : lang === "en" ? "Load failed" : "加载失败";
+      setAnalysisError(msg);
+      setAnalysisData({
+        qtySeries: [],
+        securityAmountSeries: [],
+        shareholderAmountSeries: [],
+      });
+    } finally {
+      setAnalysisLoading(false);
+    }
+  }, [lang]);
+
+  const handleOpenAnalyse = useCallback(() => {
+    setShowProfilePage(false);
+    setShowAnalysePage(true);
+    void loadAnalysisData();
+  }, [loadAnalysisData]);
+
+  const handleCloseAnalyse = useCallback(() => {
+    setShowAnalysePage(false);
   }, []);
 
   const handleOpenLogin = useCallback(() => {
@@ -1092,35 +1200,6 @@ export default function App() {
     [toOrder, unwrapApiData]
   );
 
-  const fetchOrderBySecurityId = useCallback(
-    async (securityId: string): Promise<void> => {
-      const params = new URLSearchParams();
-      params.set("securityId", securityId);
-
-      try {
-        const resp = await fetch(`${QUERY_BASE}/query?${params.toString()}`, {
-          method: "GET",
-          credentials: "include",
-        });
-        const raw = (await resp.json()) as unknown;
-        const payload = unwrapApiData<unknown>(raw);
-        const order =
-          payload && typeof payload === "object"
-            ? toOrder(payload as Partial<Order> & Record<string, unknown>)
-            : null;
-        setErrorMsg(null);
-        setOrders(order ? [order] : []);
-        setTotalOrders(order ? 1 : 0);
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : "Query security failed";
-        setErrorMsg(msg);
-        setOrders([]);
-        setTotalOrders(0);
-      }
-    },
-    [toOrder, unwrapApiData]
-  );
-
   const text = useMemo(
     () =>
       lang === "en"
@@ -1260,15 +1339,16 @@ export default function App() {
     }
 
     if (keyword.length === 6) {
-      setSearchMode("single");
-      await fetchOrderBySecurityId(keyword);
+      setSearchMode("security");
+      setTotalOrders(null);
+      setListReloadToken((prev) => prev + 1);
       return;
     }
 
     setSearchMode("all");
     setOrders([]);
     setTotalOrders(0);
-  }, [fetchOrderBySecurityId, fetchSingleOrder, searchValue]);
+  }, [fetchSingleOrder, searchValue]);
 
   const onClearSearch = useCallback(() => {
     setErrorMsg(null);
@@ -1287,6 +1367,76 @@ export default function App() {
       prev.shareholderId === currentUser ? prev : { ...prev, shareholderId: currentUser }
     );
   }, [currentUser, isLoggedIn]);
+
+  if (showAnalysePage) {
+    return (
+      <div
+        className="p-6 min-h-screen"
+        style={{
+          backgroundImage: "linear-gradient(to bottom, #93c5fd 0%, #e5f0ff 32%, #ffffff 100%)",
+        }}
+      >
+        <div className="w-[95%] mx-auto">
+          <button
+            type="button"
+            className="mb-4 h-10 w-10 rounded-full border border-slate-300 bg-white text-slate-700 text-xl hover:bg-slate-50"
+            onClick={handleCloseAnalyse}
+            aria-label={lang === "en" ? "Go back" : "返回"}
+            title={lang === "en" ? "Go back" : "返回"}
+          >
+            ←
+          </button>
+
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+            <h2 className="text-xl font-bold text-slate-900 mb-4">
+              {lang === "en" ? "Analyse" : "分析"}
+            </h2>
+            <div className="mb-4 flex justify-end">
+              <button
+                type="button"
+                className="h-9 px-3 rounded-lg border border-slate-300 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                onClick={() => void loadAnalysisData()}
+                disabled={analysisLoading}
+              >
+                {analysisLoading
+                  ? lang === "en"
+                    ? "Loading..."
+                    : "加载中..."
+                  : lang === "en"
+                    ? "Refresh"
+                    : "刷新"}
+              </button>
+            </div>
+            {analysisError && (
+              <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {analysisError}
+              </div>
+            )}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+              <ProfileLineChart
+                title={lang === "en" ? "Top10 Stocks by Volume" : "前十股票成交量"}
+                color="#2563eb"
+                values={analysisData.qtySeries}
+                emptyText={lang === "en" ? "No data" : "暂无数据"}
+              />
+              <ProfileLineChart
+                title={lang === "en" ? "Top10 Stocks by Amount" : "前十股票成交金额"}
+                color="#dc2626"
+                values={analysisData.securityAmountSeries}
+                emptyText={lang === "en" ? "No data" : "暂无数据"}
+              />
+              <ProfileLineChart
+                title={lang === "en" ? "Top10 Shareholders by Amount" : "前十股东成交金额"}
+                color="#16a34a"
+                values={analysisData.shareholderAmountSeries}
+                emptyText={lang === "en" ? "No data" : "暂无数据"}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (showProfilePage) {
     return (
@@ -1391,6 +1541,7 @@ export default function App() {
           onRegisterClick={handleOpenRegister}
           onLogoutClick={handleLogout}
           onUserClick={handleOpenProfile}
+          onAnalyseClick={handleOpenAnalyse}
         />
       </div>
 
@@ -1428,7 +1579,7 @@ export default function App() {
             )}
           </div>
 
-          <div className="w-full aspect-[4/2]">
+          <div className="w-full h-[260px] lg:h-full">
             <BannerCarousel />
           </div>
 

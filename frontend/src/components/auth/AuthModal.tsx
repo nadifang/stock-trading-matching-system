@@ -16,10 +16,11 @@ export default function AuthModal({
   isOpen,
   onClose,
   onLoginSuccess,
-  onRegisterSuccess: _onRegisterSuccess,
+  onRegisterSuccess,
   lang,
   initialTab = 'login',
 }: AuthModalProps) {
+  void onRegisterSuccess;
   const [activeTab, setActiveTab] = useState<"login" | "register">(initialTab);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
