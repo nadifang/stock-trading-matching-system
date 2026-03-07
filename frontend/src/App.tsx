@@ -1027,6 +1027,35 @@ export default function App() {
     [toOrder, unwrapApiData]
   );
 
+  const fetchOrderBySecurityId = useCallback(
+    async (securityId: string): Promise<void> => {
+      const params = new URLSearchParams();
+      params.set("securityId", securityId);
+
+      try {
+        const resp = await fetch(`${QUERY_BASE}/query?${params.toString()}`, {
+          method: "GET",
+          credentials: "include",
+        });
+        const raw = (await resp.json()) as unknown;
+        const payload = unwrapApiData<unknown>(raw);
+        const order =
+          payload && typeof payload === "object"
+            ? toOrder(payload as Partial<Order> & Record<string, unknown>)
+            : null;
+        setErrorMsg(null);
+        setOrders(order ? [order] : []);
+        setTotalOrders(order ? 1 : 0);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "Query security failed";
+        setErrorMsg(msg);
+        setOrders([]);
+        setTotalOrders(0);
+      }
+    },
+    [toOrder, unwrapApiData]
+  );
+
   const text = useMemo(
     () =>
       lang === "en"
@@ -1139,16 +1168,15 @@ export default function App() {
     }
 
     if (keyword.length === 6) {
-      setSearchMode("security");
-      setTotalOrders(null);
-      setListReloadToken((prev) => prev + 1);
+      setSearchMode("single");
+      await fetchOrderBySecurityId(keyword);
       return;
     }
 
     setSearchMode("all");
     setOrders([]);
     setTotalOrders(0);
-  }, [fetchSingleOrder, searchValue]);
+  }, [fetchOrderBySecurityId, fetchSingleOrder, searchValue]);
 
   const onClearSearch = useCallback(() => {
     setErrorMsg(null);
