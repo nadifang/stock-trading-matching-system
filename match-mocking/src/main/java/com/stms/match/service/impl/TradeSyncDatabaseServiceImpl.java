@@ -1,17 +1,23 @@
 package com.stms.match.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.stms.common.constant.OrderStatusConstant;
 import com.stms.common.domain.entity.Order;
+// 👇 1. 新增导入quotation实体（确保包名和你们项目一致）
+import com.stms.common.domain.entity.quotation;
 import com.stms.match.domain.entity.Transaction;
 import com.stms.match.mapper.OrderMapper;
 import com.stms.match.mapper.TransactionMapper;
+// 👇 2. 新增导入quotation的Mapper（包名以你们项目为准）
+import com.stms.quotation.mapper.quotationMapper;
 import com.stms.match.service.TradeSyncDatabaseService;
 import com.stms.match.utils.MatchingOrder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
+import java.time.LocalDateTime;
 
 @Service
 public class TradeSyncDatabaseServiceImpl implements TradeSyncDatabaseService {
@@ -21,6 +27,10 @@ public class TradeSyncDatabaseServiceImpl implements TradeSyncDatabaseService {
 
     @Resource
     private OrderMapper orderMapper;
+
+    // 👇 3. 新增注入quotationMapper（核心：获得操作行情表的能力）
+    @Resource
+    private quotationMapper quotationMapper;
 
     @Transactional(rollbackFor = Exception.class)
     public void syncTradeToDatabase(MatchingOrder buyOrder, MatchingOrder sellOrder, Long execQty, Double execPrice, Transaction transaction) {
@@ -35,7 +45,41 @@ public class TradeSyncDatabaseServiceImpl implements TradeSyncDatabaseService {
             throw new RuntimeException("Failed to update sell order in database");
         }
 
+        transaction.setExecTime(LocalDateTime.now());
         transactionMapper.insert(transaction);
+
+        // 👇 4. 新增核心逻辑：撮合完成后，把价格写回quotation表
+        syncPriceToQuotation(transaction.getSecurityId(), execPrice, buyOrder.getOrderDTO().getMarket());
+    }
+
+    // 👇 5. 新增：写回quotation表的方法（核心）
+    private void syncPriceToQuotation(String securityId, Double latestPrice, String market) {
+        // 先查该证券是否已有行情记录
+        quotation quote = quotationMapper.selectOne(
+                new LambdaQueryWrapper<quotation>()
+                        .eq(quotation::getSecurityId, securityId)
+        );
+
+        if (quote != null) {
+            // 有记录：更新买一价/卖一价为最新成交价，更新时间
+            quotationMapper.update(
+                    null,
+                    new LambdaUpdateWrapper<quotation>()
+                            .eq(quotation::getSecurityId, securityId)
+                            .set(quotation::getBidPrice, latestPrice)  // 买一价 = 撮合成交价
+                            .set(quotation::getAskPrice, latestPrice)  // 卖一价 = 撮合成交价
+                            .set(quotation::getUpdateTime, LocalDateTime.now())
+            );
+        } else {
+            // 无记录：插入新行情（避免quotation模块查不到）
+            quotation newQuote = new quotation();
+            newQuote.setSecurityId(securityId);
+            newQuote.setMarket(market);  // 从订单取market，更准确
+            newQuote.setBidPrice(latestPrice);
+            newQuote.setAskPrice(latestPrice);
+            newQuote.setUpdateTime(LocalDateTime.now());
+            quotationMapper.insert(newQuote);
+        }
     }
 
     private boolean updateOrderDb(MatchingOrder order, Long execQty, Double execPrice) {
