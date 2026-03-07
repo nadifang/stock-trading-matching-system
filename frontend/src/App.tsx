@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, type ShareholderInfoItem } from "./api/client";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { api } from "./api/client";
 import type { CancelOrderDTO, SubmitOrderDTO, TradeReturnVO } from "./types/server";
 import { connectTradeReturnWS, disconnectTradeReturnWS } from "./services/ws";
 import BannerCarousel from "./components/BannerCarousel";
 import TopHeader from "./components/TopHeader";
+import MarketData from "./components/MarketData";
+import StockDetail from "./components/StockDetail";
 import AuthModal from "./components/auth/AuthModal";
 
 /**
@@ -313,6 +316,12 @@ interface HistoryPoint {
   sellVolume: number;
 }
 
+interface ShareholderInfoItem {
+  securityId: string;
+  side: string;
+  cumQty: number;
+}
+
 interface MyStockSummary {
   securityId: string;
   filledBuyQty: number;
@@ -517,7 +526,7 @@ function OrderChart({ securityId }: { securityId: string }) {
 /**
  * 交易员终端页面。
  */
-export default function App() {
+function MainPage() {
   /** 订单列表与页面状态。 */
   const [orders, setOrders] = useState<Order[]>([]);
   const [searchValue, setSearchValue] = useState("");
@@ -1546,45 +1555,17 @@ export default function App() {
       </div>
 
       <section className="w-[95%] mx-auto mb-6">
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_minmax(630px,840px)_1fr] gap-1 items-stretch lg:min-h-[360px]">
-          <div className="hidden lg:flex w-full max-w-[280px] h-full justify-self-start rounded-2xl bg-white border border-slate-200 shadow-sm p-4 flex-col">
-            <div className="text-sm font-semibold text-slate-700 mb-3">
-              {lang === "en" ? "My Stocks" : "我的股票"}
-            </div>
-            {!isLoggedIn ? (
-              <div className="text-xs text-slate-500">
-                {lang === "en" ? "Please login first." : "请先登录查看"}
-              </div>
-            ) : myStockSummaries.length === 0 ? (
-              <div className="text-xs text-slate-500">
-                {lang === "en" ? "No stock records yet." : "暂无股票记录"}
-              </div>
-            ) : (
-              <div className="space-y-2 overflow-y-auto">
-                {myStockSummaries.slice(0, 6).map((item) => (
-                  <div
-                    key={item.securityId}
-                    className="rounded-lg border border-slate-100 bg-slate-50 px-2 py-2"
-                  >
-                    <div className="text-sm font-semibold text-slate-800">{item.securityId}</div>
-                    <div className="text-xs text-slate-500 mt-1">
-                      {lang === "en" ? "Net Holding" : "净持仓"}: {item.netHolding}
-                    </div>
-                    <div className="text-xs text-slate-500">
-                      {lang === "en" ? "Orders" : "委托数"}: {item.totalOrderCount}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_minmax(630px,840px)_1fr] gap-1 items-start">
+          <div className="hidden lg:flex w-full max-w-[280px] h-[400px] justify-self-start rounded-2xl bg-white border border-slate-200 shadow-sm p-4 flex-col">
+            <MarketData lang={lang} isAdmin={false} />
           </div>
 
-          <div className="w-full h-[340px] lg:h-full">
+          <div className="w-full h-[400px]">
             <BannerCarousel />
           </div>
 
           <div className="w-full lg:max-w-[280px] lg:justify-self-end">
-            <div className="bg-white p-4 rounded-lg shadow h-full flex flex-col">
+            <div className="bg-white p-4 rounded-lg shadow h-[400px] flex flex-col">
               <div className="text-sm font-semibold text-slate-700 mb-2">
                 {lang === "en" ? "Order Display" : "委托展示"}
               </div>
@@ -1736,5 +1717,18 @@ export default function App() {
         initialTab={activeAuthTab}
       />
     </div>
+  );
+}
+
+export default function App() {
+  const [lang] = useState<"en" | "zh">('en');
+
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<MainPage />} />
+        <Route path="/stock/:symbol" element={<StockDetail lang={lang} />} />
+      </Routes>
+    </Router>
   );
 }

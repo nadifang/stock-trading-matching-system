@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 
 interface MarketDataProps {
   lang: "en" | "zh";
@@ -20,6 +21,7 @@ interface StockData {
 export default function MarketData({ lang, isAdmin = false }: MarketDataProps) {
   const [stockData, setStockData] = useState<StockData[]>([]);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   // 模拟多种市场的行情数据
   useEffect(() => {
@@ -153,6 +155,11 @@ export default function MarketData({ lang, isAdmin = false }: MarketDataProps) {
     // 这里可以添加路由跳转逻辑
   };
 
+  const handleStockClick = (stock: StockData) => {
+    // 跳转到订单详情页面
+    navigate(`/stock/${stock.symbol}`);
+  };
+
   if (loading) {
     return (
       <div className="w-full max-w-[280px] h-full justify-self-start rounded-2xl bg-slate-200 border border-slate-300 flex items-center justify-center">
@@ -162,7 +169,7 @@ export default function MarketData({ lang, isAdmin = false }: MarketDataProps) {
   }
 
   return (
-    <div className="w-full max-w-[280px] h-full justify-self-start rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 border border-slate-300 p-4 flex flex-col shadow-sm">
+    <div className="w-full h-full flex flex-col">
       <h2 className="text-lg font-bold mb-4 text-gray-800 flex items-center gap-2">
         <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
         {text.marketData}
@@ -171,7 +178,11 @@ export default function MarketData({ lang, isAdmin = false }: MarketDataProps) {
       {/* 滚动行情数据 */}
       <div className="flex-1 overflow-y-auto pr-2 space-y-3 mb-4">
         {stockData.map((stock) => (
-          <div key={stock.symbol} className="bg-white p-4 rounded-lg shadow-sm transition-all duration-300 hover:shadow-md hover:translate-y-[-2px] border border-slate-100">
+          <button 
+            key={stock.symbol} 
+            className="w-full bg-white p-3 rounded-lg shadow-sm transition-all duration-300 hover:shadow-md hover:translate-y-[-2px] border border-slate-100 text-left cursor-pointer"
+            onClick={() => handleStockClick(stock)}
+          >
             <div className="flex justify-between items-start">
               <div>
                 <div className="font-semibold flex items-center gap-2">
@@ -203,15 +214,15 @@ export default function MarketData({ lang, isAdmin = false }: MarketDataProps) {
                 <div className="text-green-800 font-semibold text-xs mt-1">{stock.askPrice.toFixed(2)}</div>
               </div>
             </div>
-          </div>
+          </button>
         ))}
       </div>
       
       {/* 管理员专用行情接入按钮 */}
-      <div className="mt-auto pt-3 border-t border-slate-300">
+      <div className="mt-auto pt-3 border-t border-slate-200">
         <button 
           onClick={handleMarketAccess}
-          className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white py-2.5 rounded-lg font-medium transition-all duration-300 flex items-center justify-center gap-2 shadow-md hover:shadow-lg transform hover:-translate-y-[-1px]"
+          className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white py-2 rounded-lg font-medium transition-all duration-300 flex items-center justify-center gap-2 shadow-md hover:shadow-lg transform hover:-translate-y-[-1px]"
         >
           <span>{text.marketAccess}</span>
           {isAdmin && (
