@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.stms.query.mapper.queryMapper">
+
+    <select id="selectLowest5" resultType="com.stms.query.domain.vo.OrderDetailVO">
+    SELECT * FROM tb_order WHERE security_id = #{securityId} AND side = "S" ORDER BY price ASC LIMIT 5
+    </select>
+    <select id="selectHighest5" resultType="com.stms.query.domain.vo.OrderDetailVO">
+    SELECT * FROM tb_order WHERE security_id = #{securityId} AND side = "B" ORDER BY price DESC LIMIT 5
+    </select>
+</mapper>

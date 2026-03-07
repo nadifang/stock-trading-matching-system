@@ -3,6 +3,7 @@ package com.stms.query.controller;
 import cn.hutool.core.bean.BeanUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.stms.common.constant.SystemConstant;
+import com.stms.query.domain.vo.OrderBookVO;
 import com.stms.query.domain.vo.OrderDetailVO;
 import com.stms.query.service.OrderHistoryService;
 import com.stms.query.service.OrderQueryService;
@@ -25,11 +26,11 @@ public class QueryController {
     private OrderHistoryService orderHistoryService;
 
     @GetMapping("/query")
-    public OrderDetailVO query(@RequestParam String securityId) {
+    public OrderBookVO query(@RequestParam String securityId) {
         if (securityId == null)
             return null;
-        log.info("股票订单: {}", securityId);
-        return new OrderDetailVO(orderQueryService.getOrderById(securityId));
+        log.info("query股票订单: {}", securityId);
+        return orderQueryService.getOrderById(securityId);
     }
 
     @GetMapping("/list")
@@ -47,6 +48,9 @@ public class QueryController {
 
     @GetMapping("/history")
     public Object getHistory(@RequestParam String securityId){
+        if (securityId == null)
+            return null;
+        log.info("history股票订单: {}", securityId);
         return orderHistoryService.getHistory(securityId);
     }
 }

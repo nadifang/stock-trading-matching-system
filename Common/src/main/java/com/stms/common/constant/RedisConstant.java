@@ -63,4 +63,10 @@ public class RedisConstant {
 
     // 热点 TTL（2小时）
     public static final long HOT_TTL = 7200;
+
+    // 盘口卖盘 ZSet key
+    public static final String ORDER_BOOK_ASK_KEY = "orderbook:ask:";
+
+    // 盘口买盘 ZSet key
+    public static final String ORDER_BOOK_BID_KEY = "orderbook:bid:";
 }
