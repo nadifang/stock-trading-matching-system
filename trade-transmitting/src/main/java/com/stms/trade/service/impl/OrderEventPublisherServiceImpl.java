@@ -23,7 +23,7 @@ public class OrderEventPublisherServiceImpl implements OrderEventPublisherServic
                 RabbitMQConstant.TRANSMIT_ROUTING_KEY,
                 event
         );
-        log.info("已发送订单创建事件: {}", event.getClOrderId());
+        log.info("交易转发已发送订单创建事件: {}", event.getClOrderId());
     }
 
     public void cancelOrderEvent(OrderCanceledEvent event) {
@@ -32,6 +32,6 @@ public class OrderEventPublisherServiceImpl implements OrderEventPublisherServic
                 RabbitMQConstant.CANCEL_ROUTING_KEY,
                 event
         );
-        log.info("已发送订单撤单事件: {}", event.getClOrderId());
+        log.info("交易转发已发送订单撤单事件: {}", event.getClOrderId());
     }
 }

@@ -32,40 +32,38 @@ public class RabbitMQConstant {
     // ============ 风控返回通道 ============
 
     // 订单转发交换机名称
-    public static final String RISK_RETURN_EXCHANGE_NAME = "trade.events.exchange";
+    public static final String RISK_RETURN_EXCHANGE_NAME = "risk.trade.return.exchange";
 
     // 订单转发队列名称
-    public static final String RISK_RETURN_QUEUE_NAME = "order.created.queue";
+    public static final String RISK_RETURN_QUEUE_NAME = "risk.order.return.queue";
 
     // 订单转发路由键
-    public static final String RISK_RETURN_ROUTING_KEY = "order.created";
+    public static final String RISK_RETURN_ROUTING_KEY = "risk.order.return";
 
 
 
     // ============ 撮合返回通道 ============
 
     // 订单转发交换机名称
-    public static final String MATCH_RETURN_EXCHANGE_NAME = "trade.events.exchange";
+    public static final String MATCH_RETURN_EXCHANGE_NAME = "match.trade.return.exchange";
 
     // 订单转发队列名称
-    public static final String MATCH_RETURN_QUEUE_NAME = "order.created.queue";
+    public static final String MATCH_RETURN_QUEUE_NAME = "match.order.return.queue";
 
     // 订单转发路由键
-    public static final String MATCH_RETURN_ROUTING_KEY = "order.created";
+    public static final String MATCH_RETURN_ROUTING_KEY = "match.order.return";
 
 
 
     // ============ 风控转发通道 ============
 
     // 订单转发交换机名称
-    public static final String RISK_CONTROLLER_EXCHANGE_NAME = "trade.events.exchange";
+    public static final String RISK_CONTROLLER_EXCHANGE_NAME = "risk.trade.events.exchange";
 
     // 订单转发队列名称
-    public static final String RISK_CONTROLLER_QUEUE_NAME = "order.created.queue";
+    public static final String RISK_CONTROLLER_QUEUE_NAME = "risk.order.created.queue";
 
     // 订单转发路由键
-    public static final String RISK_CONTROLLER_ROUTING_KEY = "order.created";
-
-    public static final String TRADE_EXCHANGE = "trade.exchange";
+    public static final String RISK_CONTROLLER_ROUTING_KEY = "risk.order.created";
 
 }

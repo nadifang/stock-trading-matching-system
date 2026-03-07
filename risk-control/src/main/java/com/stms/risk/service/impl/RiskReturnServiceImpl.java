@@ -1,5 +1,6 @@
 package com.stms.risk.service.impl;
 
+import com.stms.common.constant.RabbitMQConstant;
 import com.stms.risk.service.RiskReturnService;
 import com.stms.trade.task.OrderCreatedEvent;
 import lombok.extern.slf4j.Slf4j;
@@ -7,26 +8,24 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Service;
 
+import javax.annotation.Resource;
+
 @Slf4j
 @Service
 public class RiskReturnServiceImpl implements RiskReturnService {
 
     // 如果下一模块使用 RabbitMQ，可注入 RabbitTemplate 发送消息
-    @Autowired(required = false)
+    @Resource
     private RabbitTemplate rabbitTemplate;
-
-    private static final String NEXT_EXCHANGE = "trade.return.exchange";
-    private static final String NEXT_ROUTING_KEY = "trade.return.key";
 
     @Override
     public void handleRiskSuccess(OrderCreatedEvent event) {
-        log.info("Risk check passed for order: {}", event.getClOrderId());
-        if (rabbitTemplate != null) {
-            rabbitTemplate.convertAndSend(NEXT_EXCHANGE, NEXT_ROUTING_KEY, event);
-        } else {
-            // 无MQ时仅记录日志
-            log.info("Simulating passing order to next module: {}", event);
-        }
+        rabbitTemplate.convertAndSend(
+                RabbitMQConstant.RISK_CONTROLLER_EXCHANGE_NAME,
+                RabbitMQConstant.RISK_CONTROLLER_ROUTING_KEY,
+                event
+        );
+        log.info("风控已发送订单创建事件: {}", event.getClOrderId());
     }
 
     @Override

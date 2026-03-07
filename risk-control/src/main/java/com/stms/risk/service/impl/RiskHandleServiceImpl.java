@@ -34,7 +34,7 @@ public class RiskHandleServiceImpl implements RiskHandleService {
         String shareholderId = event.getShareholderId();
 
         // 1. 查询股东所属组
-        String groupId = shareholderGroupMapper.findGroupIdByShareholderId(shareholderId);
+        //String groupId = shareholderGroupMapper.findGroupIdByShareholderId(shareholderId);
 //        if (groupId == null) {
 //            log.info("Shareholder {} not in any group, order passed", shareholderId);
 //            passToNextModule(event);
@@ -42,18 +42,18 @@ public class RiskHandleServiceImpl implements RiskHandleService {
 //        }
 
         // 2. 获取组内所有股东ID
-        List<String> shareholderIdsInGroup = shareholderGroupMapper.findShareholderIdsByGroupId(groupId);
+        //List<String> shareholderIdsInGroup = shareholderGroupMapper.findShareholderIdsByGroupId(groupId);
 
         // 3. 确定反向方向
-        String oppositeSide = event.getSide().equalsIgnoreCase("BUY") ? "SELL" : "BUY";
+        String oppositeSide = event.getSide().equalsIgnoreCase("B") ? "S" : "B";
 
         // 4. 查询是否存在反向订单（同一证券、方向相反、状态为NEW/PARTIAL、股东在组内）
-        List<OrderEntity> oppositeOrders = orderMapper.findOppositeOrders(
-                event.getSecurityId(), oppositeSide, shareholderIdsInGroup);
+        boolean oppositeOrders = orderMapper.findOppositeOrders(
+                event.getSecurityId(), oppositeSide, shareholderId);
 
-        if (oppositeOrders != null && !oppositeOrders.isEmpty()) {
-            String errorMsg = String.format("自买自卖风险: 订单 %s 与现有订单 %s 构成自买自卖，属于同一组 %s",
-                    event.getClOrderId(), oppositeOrders.get(0).getClOrderId(), groupId);
+        if (oppositeOrders) {
+            String errorMsg = String.format("订单 %s存在自买自卖风险",
+                    event.getClOrderId());
             log.warn(errorMsg);
             riskReturnService.handleRiskError(event, errorMsg);
             return;

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.stms.risk.mapper.OrderMapper">
+
+    <select id="findOppositeOrders" resultType="java.lang.Boolean">
+        SELECT EXISTS (
+            SELECT 1
+            FROM tb_order
+            WHERE security_id = #{securityId}
+            AND shareholder_id = #{shareholderId}
+            AND side = #{oppositeSide}
+        )
+    </select>
+</mapper>
