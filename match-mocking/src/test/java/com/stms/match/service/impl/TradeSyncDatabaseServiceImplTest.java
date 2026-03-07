@@ -3,7 +3,7 @@ package com.stms.match.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.stms.common.constant.OrderStatusConstant;
 import com.stms.match.domain.dto.OrderDTO;
-import com.stms.match.domain.entity.Order;
+import com.stms.common.domain.entity.Order;
 import com.stms.match.domain.entity.Transaction;
 import com.stms.match.mapper.OrderMapper;
 import com.stms.match.mapper.TransactionMapper;
