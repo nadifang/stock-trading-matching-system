@@ -114,4 +114,9 @@ public class TradeSyncDatabaseServiceImpl implements TradeSyncDatabaseService {
         );
     }
 
+<<<<<<< HEAD
 }
+=======
+}
+
+>>>>>>> 60b557c (feat: 调整行情表写入逻辑至 Controller)
