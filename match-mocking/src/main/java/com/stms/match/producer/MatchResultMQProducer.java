@@ -2,6 +2,7 @@ package com.stms.match.producer;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.stms.common.constant.MatchLogConstant;
 import com.stms.common.constant.RabbitMQConstant;
 import com.stms.trade_return.domain.VO.TradeReturnVO;
 import lombok.extern.slf4j.Slf4j;
@@ -40,19 +41,16 @@ public class MatchResultMQProducer {
             );
 
             // 3. 打印日志（和Listener风格统一）
-            log.info("MQ发送撮合结果到trade-return成功 | 订单ID:{}",
-                    new String(vo.getClOrderId()));
+            log.info(MatchLogConstant.MQ_SEND_MATCH_SUCCESS, new String(vo.getClOrderId()));
             return true;
 
         } catch (JsonProcessingException e) {
             // JSON转换失败的异常
-            log.error("MQ发送失败：TradeReturnVO转JSON异常 | 订单ID:{}",
-                    new String(vo.getClOrderId()), e);
+            log.error(MatchLogConstant.MQ_SEND_MATCH_JSON_ERROR, new String(vo.getClOrderId()), e);
             return false;
         } catch (Exception e) {
             // 其他异常（比如MQ连接失败）
-            log.error("MQ发送撮合结果到trade-return异常 | 订单ID:{}",
-                    new String(vo.getClOrderId()), e);
+            log.error(MatchLogConstant.MQ_SEND_MATCH_EXCEPTION, new String(vo.getClOrderId()), e);
             return false;
         }
     }

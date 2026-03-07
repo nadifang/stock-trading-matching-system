@@ -39,6 +39,7 @@ export default function BannerCarousel({
 }: BannerCarouselProps) {
   const safeBanners = useMemo(() => (banners.length > 0 ? banners : defaultBanners), [banners]);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [failedBannerIds, setFailedBannerIds] = useState<string[]>([]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -66,12 +67,21 @@ export default function BannerCarousel({
           }`}
           aria-hidden={index !== activeIndex}
         >
-          <img
-            src={banner.imageUrl}
-            alt={banner.title}
-            className="w-full h-full object-cover"
-            draggable={false}
-          />
+          {failedBannerIds.includes(banner.id) ? (
+            <div className="w-full h-full bg-gradient-to-r from-indigo-500 via-blue-500 to-cyan-500" />
+          ) : (
+            <img
+              src={banner.imageUrl}
+              alt={banner.title}
+              className="w-full h-full object-cover"
+              draggable={false}
+              onError={() =>
+                setFailedBannerIds((prev) =>
+                  prev.includes(banner.id) ? prev : [...prev, banner.id]
+                )
+              }
+            />
+          )}
           <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/35 to-transparent" />
           <div className="absolute left-6 bottom-8 text-white">
             <p className="text-2xl md:text-3xl font-bold tracking-wide">{banner.title}</p>

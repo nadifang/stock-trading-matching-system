@@ -3,8 +3,10 @@ package com.stms.match.service.impl;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.deser.DataFormatReaders;
 import com.stms.common.constant.OrderStatusConstant;
 import com.stms.common.constant.RedisConstant;
+import com.stms.common.constant.MatchLogConstant;
 import com.stms.match.domain.dto.CancelDTO;
 import com.stms.match.domain.dto.OrderDTO;
 import com.stms.match.domain.entity.Transaction;
@@ -13,6 +15,7 @@ import com.stms.match.service.MatchService;
 import com.stms.match.service.TradeSyncDatabaseService;
 import com.stms.match.utils.MatchingOrder;
 import com.stms.match.utils.OrderBook;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -22,6 +25,7 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 
+@Slf4j
 @Service
 public class MatchServiceImpl extends ServiceImpl<TransactionMapper, Transaction> implements MatchService {
 
@@ -49,12 +53,12 @@ public class MatchServiceImpl extends ServiceImpl<TransactionMapper, Transaction
 
                 if (OrderStatusConstant.ORDER_STATUS_CANCELED.equals(currentStatus) ||
                         OrderStatusConstant.ORDER_STATUS_REJECTED.equals(currentStatus)) {
-                    System.out.println("拦截：订单状态为 " + currentStatus + "，放弃进入撮合池 | 订单ID: " + order.getClOrderId());
+                    log.warn(MatchLogConstant.MATCH_INTERCEPT_STATUS, currentStatus, order.getClOrderId());
                     return;
                 }
             } catch (Exception e) {
                 // 如果 JSON 解析发生异常，为了安全起见，拦截该订单并打印日志
-                System.out.println("拦截：解析Redis订单状态异常，放弃进入撮合池 | 订单ID: " + order.getClOrderId() + "，异常：" + e.getMessage());
+                log.error(MatchLogConstant.MATCH_INTERCEPT_REDIS_ERROR, order.getClOrderId(), e.getMessage());
                 return;
             }
         }
@@ -98,7 +102,7 @@ public class MatchServiceImpl extends ServiceImpl<TransactionMapper, Transaction
                     updateRedisAfterCancel(orderId, canceledQty);
                     return true;
                 } catch (Exception e) {
-                    System.out.println("撤单状态同步异常 | 订单ID: " + orderId + ", 异常: " + e.getMessage());
+                    log.error(MatchLogConstant.MATCH_SYNC_CANCEL_ERROR, orderId, e.getMessage());
                     return false;
                 }
             }
@@ -167,13 +171,11 @@ public class MatchServiceImpl extends ServiceImpl<TransactionMapper, Transaction
 
             takerOrder.setRemQty(takerOrder.getRemQty() - execQty);
             makerOrder.setRemQty(makerOrder.getRemQty() - execQty);
-            System.out.println("撮合成功并同步落库 | 股票: " + transaction.getSecurityId() +
-                    " | 成交价: " + execPrice + " | 成交量: " + execQty);
+            log.info(MatchLogConstant.MATCH_EXECUTE_SUCCESS, transaction.getSecurityId(), execPrice, execQty);
             updateRedisAfterTrade(takerOrder, execQty, execPrice);
             updateRedisAfterTrade(makerOrder, execQty, execPrice);
         } catch (Exception e) {
-            System.out.println("数据库同步失败，交易回滚 | 股票: " + transaction.getSecurityId() +
-                    " | 成交价: " + execPrice + " | 成交量: " + execQty);
+            log.error(MatchLogConstant.MATCH_EXECUTE_ROLLBACK, transaction.getSecurityId(), execPrice, execQty);
             takerOrder.setCanceled(true);
             makerOrder.setCanceled(true);
         }
@@ -210,7 +212,7 @@ public class MatchServiceImpl extends ServiceImpl<TransactionMapper, Transaction
                 stringRedisTemplate.opsForValue().set(statusKey, updatedOrderJson, 1, java.util.concurrent.TimeUnit.DAYS);
 
             } catch (Exception e) {
-                System.out.println("更新Redis订单状态失败，订单号：" + order.getOrderDTO().getClOrderId() + "，异常：" + e.getMessage());
+                log.error(MatchLogConstant.MATCH_REDIS_UPDATE_ERROR, order.getOrderDTO().getClOrderId(), e.getMessage());
             }
         }
     }
@@ -236,7 +238,7 @@ public class MatchServiceImpl extends ServiceImpl<TransactionMapper, Transaction
                 String updatedOrderJson = objectMapper.writeValueAsString(orderMap);
                 stringRedisTemplate.opsForValue().set(statusKey, updatedOrderJson, 1, java.util.concurrent.TimeUnit.DAYS);
             } catch (Exception e) {
-                System.out.println("更新Redis订单撤单状态失败，订单号：" + orderId + "，异常：" + e.getMessage());
+                log.error(MatchLogConstant.MATCH_REDIS_CANCEL_ERROR, orderId, e.getMessage());
             }
         }
     }

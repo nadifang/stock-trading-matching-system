@@ -10,26 +10,26 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:8081',
+        target: 'http://129.211.187.179:8081',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
       '/user-api': {
-        target: 'http://localhost:8085',
+        target: 'http://129.211.187.179:8085',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/user-api/, ''),
       },
       '/trade-query': {
-        target: 'http://localhost:8082',
+        target: 'http://129.211.187.179:8082',
         changeOrigin: true,
       },
       '/quotation-api': {
-        target: 'http://localhost:8086',
+        target: 'http://129.211.187.179:8086',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/quotation-api/, ''),
       },
       '/ws': {
-        target: 'http://localhost:8087',
+        target: 'http://129.211.187.179:8087',
         changeOrigin: true,
         ws: true,
       },

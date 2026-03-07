@@ -1,6 +1,7 @@
 package com.stms.match.listener;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.stms.common.constant.MatchLogConstant;
 import com.stms.common.constant.RabbitMQConstant;
 import com.stms.match.domain.dto.CancelDTO;
 import com.stms.match.domain.dto.OrderDTO;
@@ -25,11 +26,11 @@ public class MatchMessageListener {
     public void handleOrderFromMQ(String orderJson) {
         try {
             OrderDTO order = objectMapper.readValue(orderJson, OrderDTO.class);
-            log.info("从MQ收到风控订单：{}", order.getClOrderId());
+            log.info(MatchLogConstant.MQ_RECEIVE_ORDER, order.getClOrderId());
             matchService.processOrder(order); // 直接调用队友的方法
-            log.info("MQ订单处理完成：{}", order.getClOrderId());
+            log.info(MatchLogConstant.MQ_PROCESS_ORDER_SUCCESS, order.getClOrderId());
         } catch (Exception e) {
-            log.error("处理MQ订单失败：{}", orderJson, e);
+            log.error(MatchLogConstant.MQ_PROCESS_ORDER_FAIL, orderJson, e);
         }
     }
 
@@ -38,15 +39,15 @@ public class MatchMessageListener {
     public void handleCancelFromMQ(String cancelJson) {
         try {
             CancelDTO cancelDTO = objectMapper.readValue(cancelJson, CancelDTO.class);
-            log.info("从MQ收到风控撤单：原订单ID={}", cancelDTO.getOrigClOrderId());
+            log.info(MatchLogConstant.MQ_RECEIVE_CANCEL, cancelDTO.getOrigClOrderId());
             boolean cancelResult = matchService.cancelOrder(cancelDTO);
             if (cancelResult) {
-                log.info("撤单成功：原订单ID={}", cancelDTO.getOrigClOrderId());
+                log.info(MatchLogConstant.MQ_CANCEL_SUCCESS, cancelDTO.getOrigClOrderId());
             } else {
-                log.warn("撤单失败：原订单ID={}（已成交/不存在）", cancelDTO.getOrigClOrderId());
+                log.warn(MatchLogConstant.MQ_CANCEL_FAIL, cancelDTO.getOrigClOrderId());
             }
         } catch (Exception e) {
-            log.error("处理MQ撤单失败：{}", cancelJson, e);
+            log.error(MatchLogConstant.MQ_PROCESS_CANCEL_FAIL, cancelJson, e);
         }
     }
 }

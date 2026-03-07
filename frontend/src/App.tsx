@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, type PublishQuotationDTO, type ShareholderInfoItem } from "./api/client";
+import { api, type ShareholderInfoItem } from "./api/client";
 import type { CancelOrderDTO, SubmitOrderDTO, TradeReturnVO } from "./types/server";
 import { connectTradeReturnWS, disconnectTradeReturnWS } from "./services/ws";
 import BannerCarousel from "./components/BannerCarousel";
 import TopHeader from "./components/TopHeader";
-import MarketData from "./components/MarketData";
 import AuthModal from "./components/auth/AuthModal";
 
 /**
@@ -314,6 +313,14 @@ interface HistoryPoint {
   sellVolume: number;
 }
 
+interface MyStockSummary {
+  securityId: string;
+  filledBuyQty: number;
+  filledSellQty: number;
+  netHolding: number;
+  totalOrderCount: number;
+}
+
 const toSafeNum = (value: unknown): number => {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
@@ -473,30 +480,12 @@ export default function App() {
   const [activeAuthTab, setActiveAuthTab] = useState<"login" | "register">('login');
   const [isLoggedIn, setIsLoggedIn] = useState(!!localStorage.getItem('authToken'));
   const [currentUser, setCurrentUser] = useState<string | null>(localStorage.getItem('shareholderId'));
-  const [pageMode, setPageMode] = useState<"trade" | "quotation-access" | "user-info">("trade");
-  const [quotationForm, setQuotationForm] = useState<PublishQuotationDTO>({
-    market: "XSHG",
-    securityId: "600030",
-    bidPrice: 20.5,
-    askPrice: 20.6,
-  });
-  const [publishingQuotation, setPublishingQuotation] = useState(false);
-  const [quotationMessage, setQuotationMessage] = useState<string | null>(null);
+  const [showProfilePage, setShowProfilePage] = useState(false);
   const [userInfoRows, setUserInfoRows] = useState<ShareholderInfoItem[]>([]);
   const [loadingUserInfo, setLoadingUserInfo] = useState(false);
-  const [userInfoMessage, setUserInfoMessage] = useState<string | null>(null);
+  const [userInfoError, setUserInfoError] = useState<string | null>(null);
   const cancelingOrderIdsRef = useRef<Set<string>>(new Set());
   const cancelPrevStatusRef = useRef<Map<string, OrderStatus>>(new Map());
-
-  const isAdmin = useMemo(() => {
-    const role = (
-      localStorage.getItem("role") ||
-      localStorage.getItem("userRole") ||
-      ""
-    ).toLowerCase();
-    const user = (currentUser || "").toLowerCase();
-    return role === "admin" || user === "admin";
-  }, [currentUser]);
 
   /** 下单表单状态。 */
   const [form, setForm] = useState<OrderForm>({
@@ -505,11 +494,11 @@ export default function App() {
     side: "B",
     qty: 100,
     price: 20.5,
-    shareholderId: "A123456789",
+    shareholderId: localStorage.getItem("shareholderId") ?? "",
   });
 
   /** 当前用户 ID（以股东号作为订阅维度）。 */
-  const currentUserId = useMemo(() => form.shareholderId, [form.shareholderId]);
+  const currentUserId = useMemo(() => currentUser ?? "", [currentUser]);
   const wsBoundRef = useRef(false);
 
   /**
@@ -894,13 +883,23 @@ export default function App() {
   }, []);
 
   const handleLoginSuccess = useCallback(() => {
+    const loginUser = localStorage.getItem("shareholderId");
     setIsLoggedIn(true);
-    setCurrentUser(localStorage.getItem('shareholderId'));
+    setCurrentUser(loginUser);
+    setForm((prev) => ({
+      ...prev,
+      shareholderId: loginUser ?? "",
+    }));
   }, []);
 
   const handleRegisterSuccess = useCallback(() => {
+    const loginUser = localStorage.getItem("shareholderId");
     setIsLoggedIn(true);
-    setCurrentUser(localStorage.getItem('shareholderId'));
+    setCurrentUser(loginUser);
+    setForm((prev) => ({
+      ...prev,
+      shareholderId: loginUser ?? "",
+    }));
   }, []);
 
   const handleLogout = useCallback(() => {
@@ -908,6 +907,43 @@ export default function App() {
     localStorage.removeItem('shareholderId');
     setIsLoggedIn(false);
     setCurrentUser(null);
+    setShowProfilePage(false);
+    setUserInfoRows([]);
+    setUserInfoError(null);
+    setForm((prev) => ({
+      ...prev,
+      shareholderId: "",
+    }));
+  }, []);
+
+  const loadUserInfo = useCallback(async () => {
+    if (!isLoggedIn) {
+      setUserInfoRows([]);
+      setUserInfoError(lang === "en" ? "Please login first." : "请先登录。");
+      return;
+    }
+    setLoadingUserInfo(true);
+    setUserInfoError(null);
+    try {
+      const rows = await api.getUserInfo();
+      setUserInfoRows(Array.isArray(rows) ? rows : []);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : lang === "en" ? "Load failed" : "加载失败";
+      setUserInfoError(msg);
+      setUserInfoRows([]);
+    } finally {
+      setLoadingUserInfo(false);
+    }
+  }, [isLoggedIn, lang]);
+
+  const handleOpenProfile = useCallback(() => {
+    if (!isLoggedIn) return;
+    setShowProfilePage(true);
+    void loadUserInfo();
+  }, [isLoggedIn, loadUserInfo]);
+
+  const handleCloseProfile = useCallback(() => {
+    setShowProfilePage(false);
   }, []);
 
   const handleOpenLogin = useCallback(() => {
@@ -1008,9 +1044,15 @@ export default function App() {
         const safeOrders = rows.map((item) =>
           toOrder((item ?? {}) as Partial<Order> & Record<string, unknown>)
         );
+        const visibleOrders =
+          isLoggedIn && currentUser
+            ? safeOrders.filter((order) => order.shareholderId === currentUser)
+            : safeOrders;
         setErrorMsg(null);
-        setOrders(safeOrders);
-        setTotalOrders(nextTotalOrders);
+        setOrders(visibleOrders);
+        setTotalOrders(
+          isLoggedIn && currentUser ? visibleOrders.length : nextTotalOrders
+        );
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "Query list failed";
         setErrorMsg(msg);
@@ -1018,7 +1060,7 @@ export default function App() {
         setTotalOrders(0);
       }
     },
-    [pageSize, toOrder, unwrapApiData]
+    [currentUser, isLoggedIn, pageSize, toOrder, unwrapApiData]
   );
 
   const fetchSingleOrder = useCallback(
@@ -1159,6 +1201,33 @@ export default function App() {
     return orders.length >= pageSize;
   }, [currentPage, knownTotalPages, orders.length, pageSize, searchMode]);
 
+  const myStockSummaries = useMemo<MyStockSummary[]>(() => {
+    const map = new Map<string, MyStockSummary>();
+    for (const row of userInfoRows) {
+      const key = row.securityId;
+      const prev = map.get(key) ?? {
+        securityId: key,
+        filledBuyQty: 0,
+        filledSellQty: 0,
+        netHolding: 0,
+        totalOrderCount: 0,
+      };
+
+      const filledQty = Math.max(0, Number(row.cumQty ?? 0));
+      const side = String(row.side ?? "").toUpperCase();
+      if (side === "B" || side === "BUY") {
+        prev.filledBuyQty += filledQty;
+      } else {
+        prev.filledSellQty += filledQty;
+      }
+      prev.totalOrderCount += 1;
+      prev.netHolding = prev.filledBuyQty - prev.filledSellQty;
+      map.set(key, prev);
+    }
+
+    return Array.from(map.values()).sort((a, b) => a.securityId.localeCompare(b.securityId));
+  }, [userInfoRows]);
+
   useEffect(() => {
     if (knownTotalPages === null) return;
     setCurrentPage((prev) => Math.min(prev, knownTotalPages));
@@ -1211,65 +1280,15 @@ export default function App() {
     setListReloadToken((prev) => prev + 1);
   }, []);
 
-  const openQuotationAccessPage = useCallback(() => {
-    if (!isLoggedIn || !isAdmin) return;
-    setQuotationMessage(null);
-    setPageMode("quotation-access");
-  }, [isAdmin, isLoggedIn]);
+  // 登录后始终绑定当前股东号，避免沿用旧账号的下单/WS上下文
+  useEffect(() => {
+    if (!isLoggedIn || !currentUser) return;
+    setForm((prev) =>
+      prev.shareholderId === currentUser ? prev : { ...prev, shareholderId: currentUser }
+    );
+  }, [currentUser, isLoggedIn]);
 
-  const loadUserInfo = useCallback(async () => {
-    if (!isLoggedIn) {
-      setUserInfoRows([]);
-      setUserInfoMessage(lang === "en" ? "Please login first." : "请先登录。");
-      return;
-    }
-    setLoadingUserInfo(true);
-    setUserInfoMessage(null);
-    try {
-      const rows = await api.getUserInfo();
-      setUserInfoRows(Array.isArray(rows) ? rows : []);
-      if (!rows || rows.length === 0) {
-        setUserInfoMessage(lang === "en" ? "No data." : "暂无数据。");
-      }
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : lang === "en" ? "Load failed" : "加载失败";
-      setUserInfoMessage(msg);
-      setUserInfoRows([]);
-    } finally {
-      setLoadingUserInfo(false);
-    }
-  }, [isLoggedIn, lang]);
-
-  const openUserInfoPage = useCallback(() => {
-    setPageMode("user-info");
-    void loadUserInfo();
-  }, [loadUserInfo]);
-
-  const handlePublishQuotation = useCallback(async () => {
-    if (!isAdmin) return;
-    if (!quotationForm.securityId.trim()) {
-      setQuotationMessage(lang === "en" ? "Security ID is required" : "证券代码不能为空");
-      return;
-    }
-    setPublishingQuotation(true);
-    setQuotationMessage(null);
-    try {
-      await api.publishQuotation({
-        market: quotationForm.market,
-        securityId: quotationForm.securityId.trim(),
-        bidPrice: quotationForm.bidPrice,
-        askPrice: quotationForm.askPrice,
-      });
-      setQuotationMessage(lang === "en" ? "Published successfully" : "行情接入已提交");
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : lang === "en" ? "Publish failed" : "提交失败";
-      setQuotationMessage(msg);
-    } finally {
-      setPublishingQuotation(false);
-    }
-  }, [isAdmin, lang, quotationForm]);
-
-  if (pageMode === "quotation-access") {
+  if (showProfilePage) {
     return (
       <div
         className="p-6 min-h-screen"
@@ -1277,240 +1296,75 @@ export default function App() {
           backgroundImage: "linear-gradient(to bottom, #93c5fd 0%, #e5f0ff 32%, #ffffff 100%)",
         }}
       >
-        <div className="w-[95%] mx-auto mb-4">
-          <TopHeader
-            wsConnected={wsConnected}
-            lang={lang}
-            onToggleLang={toggleLang}
-            searchValue={searchValue}
-            onSearchValueChange={(val) => setSearchValue(val)}
-            onSearch={onSearch}
-            onClearSearch={onClearSearch}
-            isLoggedIn={isLoggedIn}
-            currentUser={currentUser}
-            onLoginClick={handleOpenLogin}
-            onRegisterClick={handleOpenRegister}
-            onLogoutClick={handleLogout}
-          />
-        </div>
-        <section className="w-[95%] mx-auto">
-          <div className="bg-white rounded-xl border border-slate-200 shadow p-5 max-w-3xl mx-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">
-                {lang === "en" ? "Quotation Access" : "行情接入"}
-              </h2>
-              <button
-                type="button"
-                className="px-3 py-1.5 border border-slate-300 rounded text-sm hover:bg-slate-50"
-                onClick={() => setPageMode("trade")}
-              >
-                {lang === "en" ? "Back" : "返回"}
-              </button>
-            </div>
-            {!isAdmin ? (
-              <div className="text-sm text-red-600">
-                {lang === "en"
-                  ? "Only admin can access this page."
-                  : "仅管理员可使用行情接入功能。"}
+        <div className="w-[95%] mx-auto">
+          <button
+            type="button"
+            className="mb-4 h-10 w-10 rounded-full border border-slate-300 bg-white text-slate-700 text-xl hover:bg-slate-50"
+            onClick={handleCloseProfile}
+            aria-label={lang === "en" ? "Go back" : "返回"}
+            title={lang === "en" ? "Go back" : "返回"}
+          >
+            ←
+          </button>
+
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 max-w-xl">
+            <h2 className="text-xl font-bold text-slate-900 mb-4">
+              {lang === "en" ? "Personal Information" : "个人信息"}
+            </h2>
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <span className="inline-flex items-center px-2 py-1 rounded-md bg-blue-50 border border-blue-200 text-blue-700 text-sm">
+                  用户
+                </span>
+                <span className="text-sm text-slate-700">{currentUser ?? "-"}</span>
               </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="flex flex-col">
-                  <label className="text-sm text-gray-600 mb-1">{lang === "en" ? "Market" : "市场"}</label>
-                  <select
-                    className="border p-2 rounded"
-                    value={quotationForm.market}
-                    onChange={(e) =>
-                      setQuotationForm((prev) => ({ ...prev, market: e.target.value }))
-                    }
-                  >
-                    <option value="XSHG">XSHG</option>
-                    <option value="XSHE">XSHE</option>
-                    <option value="BJSE">BJSE</option>
-                  </select>
+
+              <div className="rounded-lg border border-slate-200">
+                <div className="px-3 py-2 border-b border-slate-200 bg-slate-50 text-sm font-semibold text-slate-700">
+                  {lang === "en" ? "My Stocks" : "我的股票"}
                 </div>
-                <div className="flex flex-col">
-                  <label className="text-sm text-gray-600 mb-1">
-                    {lang === "en" ? "Security ID" : "证券代码"}
-                  </label>
-                  <input
-                    className="border p-2 rounded"
-                    value={quotationForm.securityId}
-                    onChange={(e) =>
-                      setQuotationForm((prev) => ({ ...prev, securityId: e.target.value }))
-                    }
-                  />
-                </div>
-                <div className="flex flex-col">
-                  <label className="text-sm text-gray-600 mb-1">
-                    {lang === "en" ? "Latest Price" : "最新买价"}
-                  </label>
-                  <input
-                    className="border p-2 rounded"
-                    type="number"
-                    value={quotationForm.bidPrice}
-                    onChange={(e) =>
-                      setQuotationForm((prev) => ({ ...prev, bidPrice: Number(e.target.value) }))
-                    }
-                  />
-                </div>
-                <div className="flex flex-col">
-                  <label className="text-sm text-gray-600 mb-1">
-                    {lang === "en" ? "Ask Price" : "最新卖价"}
-                  </label>
-                  <input
-                    className="border p-2 rounded"
-                    type="number"
-                    value={quotationForm.askPrice}
-                    onChange={(e) =>
-                      setQuotationForm((prev) => ({ ...prev, askPrice: Number(e.target.value) }))
-                    }
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <button
-                    type="button"
-                    className={`text-white py-2 px-5 rounded font-medium ${
-                      publishingQuotation
-                        ? "bg-blue-300 cursor-not-allowed"
-                        : "bg-blue-600 hover:bg-blue-700"
-                    }`}
-                    disabled={publishingQuotation}
-                    onClick={() => void handlePublishQuotation()}
-                  >
-                    {publishingQuotation
-                      ? lang === "en"
-                        ? "Submitting..."
-                        : "提交中..."
-                      : lang === "en"
-                        ? "Submit Quotation"
-                        : "提交行情"}
-                  </button>
-                </div>
-                {quotationMessage && (
-                  <div
-                    className={`md:col-span-2 text-sm ${
-                      quotationMessage.includes("失败") || quotationMessage.includes("failed")
-                        ? "text-red-600"
-                        : "text-green-600"
-                    }`}
-                  >
-                    {quotationMessage}
+                {loadingUserInfo && (
+                  <div className="px-3 py-3 text-sm text-slate-500">
+                    {lang === "en" ? "Loading..." : "加载中..."}
+                  </div>
+                )}
+                {userInfoError && (
+                  <div className="px-3 py-3 text-sm text-red-600">{userInfoError}</div>
+                )}
+                {!loadingUserInfo && !userInfoError && myStockSummaries.length === 0 ? (
+                  <div className="px-3 py-6 text-sm text-slate-500">
+                    {lang === "en" ? "No stock records yet." : "暂无股票记录"}
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-white">
+                        <tr className="text-slate-600">
+                          <th className="text-left font-medium px-3 py-2">{lang === "en" ? "Symbol" : "代码"}</th>
+                          <th className="text-right font-medium px-3 py-2">{lang === "en" ? "Buy(Filled)" : "买入(已成)"}</th>
+                          <th className="text-right font-medium px-3 py-2">{lang === "en" ? "Sell(Filled)" : "卖出(已成)"}</th>
+                          <th className="text-right font-medium px-3 py-2">{lang === "en" ? "Net Holding" : "净持仓"}</th>
+                          <th className="text-right font-medium px-3 py-2">{lang === "en" ? "Orders" : "委托数"}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {myStockSummaries.map((item) => (
+                          <tr key={item.securityId} className="border-t border-slate-100 text-slate-700">
+                            <td className="px-3 py-2 font-semibold">{item.securityId}</td>
+                            <td className="px-3 py-2 text-right">{item.filledBuyQty}</td>
+                            <td className="px-3 py-2 text-right">{item.filledSellQty}</td>
+                            <td className="px-3 py-2 text-right">{item.netHolding}</td>
+                            <td className="px-3 py-2 text-right">{item.totalOrderCount}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
-            )}
+            </div>
           </div>
-        </section>
-        <AuthModal
-          isOpen={isAuthModalOpen}
-          onClose={() => setIsAuthModalOpen(false)}
-          onLoginSuccess={handleLoginSuccess}
-          onRegisterSuccess={handleRegisterSuccess}
-          lang={lang}
-          initialTab={activeAuthTab}
-        />
-      </div>
-    );
-  }
-
-  if (pageMode === "user-info") {
-    return (
-      <div
-        className="p-6 min-h-screen"
-        style={{
-          backgroundImage: "linear-gradient(to bottom, #93c5fd 0%, #e5f0ff 32%, #ffffff 100%)",
-        }}
-      >
-        <div className="w-[95%] mx-auto mb-4">
-          <TopHeader
-            wsConnected={wsConnected}
-            lang={lang}
-            onToggleLang={toggleLang}
-            searchValue={searchValue}
-            onSearchValueChange={(val) => setSearchValue(val)}
-            onSearch={onSearch}
-            onClearSearch={onClearSearch}
-            isLoggedIn={isLoggedIn}
-            currentUser={currentUser}
-            onLoginClick={handleOpenLogin}
-            onRegisterClick={handleOpenRegister}
-            onLogoutClick={handleLogout}
-          />
         </div>
-        <section className="w-[95%] mx-auto">
-          <div className="bg-white rounded-xl border border-slate-200 shadow p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">
-                {lang === "en" ? "My Stocks / Personal Info" : "我的股票 / 个人信息"}
-              </h2>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className="px-3 py-1.5 border border-slate-300 rounded text-sm hover:bg-slate-50"
-                  onClick={() => void loadUserInfo()}
-                  disabled={loadingUserInfo}
-                >
-                  {loadingUserInfo
-                    ? lang === "en"
-                      ? "Loading..."
-                      : "加载中..."
-                    : lang === "en"
-                      ? "Refresh"
-                      : "刷新"}
-                </button>
-                <button
-                  type="button"
-                  className="px-3 py-1.5 border border-slate-300 rounded text-sm hover:bg-slate-50"
-                  onClick={() => setPageMode("trade")}
-                >
-                  {lang === "en" ? "Back" : "返回"}
-                </button>
-              </div>
-            </div>
-            {userInfoMessage && (
-              <div className="mb-3 text-sm text-slate-600">{userInfoMessage}</div>
-            )}
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="text-left text-slate-500 border-b">
-                    <th className="py-2 pr-3">{lang === "en" ? "Market" : "市场"}</th>
-                    <th className="py-2 pr-3">{lang === "en" ? "Security" : "证券代码"}</th>
-                    <th className="py-2 pr-3">{lang === "en" ? "Side" : "方向"}</th>
-                    <th className="py-2 pr-3">Qty</th>
-                    <th className="py-2 pr-3">{lang === "en" ? "Price" : "价格"}</th>
-                    <th className="py-2 pr-3">{lang === "en" ? "Status" : "状态"}</th>
-                    <th className="py-2 pr-3">CumQty</th>
-                    <th className="py-2 pr-3">{lang === "en" ? "Remaining" : "剩余"}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {userInfoRows.map((row, idx) => (
-                    <tr key={`${row.securityId}-${idx}`} className="border-b last:border-0 text-slate-700">
-                      <td className="py-2 pr-3">{row.market}</td>
-                      <td className="py-2 pr-3">{row.securityId}</td>
-                      <td className="py-2 pr-3">{row.side}</td>
-                      <td className="py-2 pr-3">{row.qty}</td>
-                      <td className="py-2 pr-3">{row.price}</td>
-                      <td className="py-2 pr-3">{row.status}</td>
-                      <td className="py-2 pr-3">{row.cumQty}</td>
-                      <td className="py-2 pr-3">{row.remainingQty}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-        <AuthModal
-          isOpen={isAuthModalOpen}
-          onClose={() => setIsAuthModalOpen(false)}
-          onLoginSuccess={handleLoginSuccess}
-          onRegisterSuccess={handleRegisterSuccess}
-          lang={lang}
-          initialTab={activeAuthTab}
-        />
       </div>
     );
   }
@@ -1536,52 +1390,46 @@ export default function App() {
           onLoginClick={handleOpenLogin}
           onRegisterClick={handleOpenRegister}
           onLogoutClick={handleLogout}
+          onUserClick={handleOpenProfile}
         />
       </div>
 
       <section className="w-[95%] mx-auto mb-6">
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_minmax(630px,840px)_1fr] gap-1 items-stretch">
-          <div className="hidden lg:block w-full max-w-[280px] h-[500px] justify-self-start">
-            <div className="h-full overflow-y-auto">
-              <MarketData lang={lang} isAdmin={false} />
+          <div className="hidden lg:flex w-full max-w-[280px] h-full justify-self-start rounded-2xl bg-white border border-slate-200 shadow-sm p-4 flex-col">
+            <div className="text-sm font-semibold text-slate-700 mb-3">
+              {lang === "en" ? "My Stocks" : "我的股票"}
             </div>
+            {!isLoggedIn ? (
+              <div className="text-xs text-slate-500">
+                {lang === "en" ? "Please login first." : "请先登录查看"}
+              </div>
+            ) : myStockSummaries.length === 0 ? (
+              <div className="text-xs text-slate-500">
+                {lang === "en" ? "No stock records yet." : "暂无股票记录"}
+              </div>
+            ) : (
+              <div className="space-y-2 overflow-y-auto">
+                {myStockSummaries.slice(0, 6).map((item) => (
+                  <div
+                    key={item.securityId}
+                    className="rounded-lg border border-slate-100 bg-slate-50 px-2 py-2"
+                  >
+                    <div className="text-sm font-semibold text-slate-800">{item.securityId}</div>
+                    <div className="text-xs text-slate-500 mt-1">
+                      {lang === "en" ? "Net Holding" : "净持仓"}: {item.netHolding}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {lang === "en" ? "Orders" : "委托数"}: {item.totalOrderCount}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          <div className="w-full">
-            <div className="aspect-[4/2]">
-              <BannerCarousel />
-            </div>
-            <div className="mt-2 flex justify-end items-center gap-2">
-              <button
-                type="button"
-                className={`px-3 py-1.5 text-sm rounded ${
-                  isLoggedIn
-                    ? "bg-blue-600 text-white hover:bg-blue-700"
-                    : "bg-slate-200 text-slate-500 cursor-not-allowed"
-                }`}
-                onClick={openUserInfoPage}
-                disabled={!isLoggedIn}
-              >
-                {lang === "en" ? "My Stocks" : "我的股票"}
-              </button>
-              {!isAdmin && (
-                <span className="text-xs text-slate-500">
-                  {lang === "en" ? "Admin only" : "仅管理员可用"}
-                </span>
-              )}
-              <button
-                type="button"
-                className={`px-3 py-1.5 text-sm rounded ${
-                  isLoggedIn && isAdmin
-                    ? "bg-slate-900 text-white hover:bg-black"
-                    : "bg-slate-200 text-slate-500 cursor-not-allowed"
-                }`}
-                onClick={openQuotationAccessPage}
-                disabled={!isLoggedIn || !isAdmin}
-              >
-                {lang === "en" ? "Quotation Access" : "行情接入"}
-              </button>
-            </div>
+          <div className="w-full aspect-[4/2]">
+            <BannerCarousel />
           </div>
 
           <div className="w-full lg:max-w-[280px] lg:justify-self-end">
