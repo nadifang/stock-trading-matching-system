@@ -1280,6 +1280,9 @@ export default function App() {
     return orders.length >= pageSize;
   }, [currentPage, knownTotalPages, orders.length, pageSize, searchMode]);
 
+  // 右侧订单展示固定最多 10 条（避免二次分页导致空列表）
+  const pagedOrders = useMemo(() => orders.slice(0, pageSize), [orders, pageSize]);
+
   const myStockSummaries = useMemo<MyStockSummary[]>(() => {
     const map = new Map<string, MyStockSummary>();
     for (const row of userInfoRows) {
@@ -1346,8 +1349,8 @@ export default function App() {
     }
 
     setSearchMode("all");
-    setOrders([]);
-    setTotalOrders(0);
+    setTotalOrders(null);
+    setListReloadToken((prev) => prev + 1);
   }, [fetchSingleOrder, searchValue]);
 
   const onClearSearch = useCallback(() => {
@@ -1594,12 +1597,12 @@ export default function App() {
                 </div>
               )}
               <div className="flex-1 overflow-y-auto space-y-2">
-                {orders.length === 0 ? (
+                {pagedOrders.length === 0 ? (
                   <div className="rounded border border-slate-100 text-slate-500 text-xs px-3 py-8 text-center">
                     No orders
                   </div>
                 ) : (
-                  orders.map((o) => (
+                  pagedOrders.map((o) => (
                     <div key={o.clOrderId} className="rounded border border-slate-200 bg-slate-50 px-2 py-2">
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-sm font-semibold text-slate-800">{o.securityId}</span>
