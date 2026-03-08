@@ -1586,8 +1586,8 @@ export default function App() {
             <BannerCarousel />
           </div>
 
-          <div className="w-full lg:max-w-[280px] lg:justify-self-end">
-            <div className="bg-white p-4 rounded-lg shadow h-full flex flex-col">
+          <div className="w-full lg:max-w-[280px] lg:justify-self-end lg:h-[340px]">
+            <div className="bg-white p-4 rounded-lg shadow h-full flex flex-col min-h-0">
               <div className="text-sm font-semibold text-slate-700 mb-2">
                 {lang === "en" ? "Order Display" : "委托展示"}
               </div>
@@ -1596,7 +1596,7 @@ export default function App() {
                   {errorMsg}
                 </div>
               )}
-              <div className="flex-1 overflow-y-auto space-y-2">
+              <div className="flex-1 min-h-0 overflow-y-auto space-y-2">
                 {pagedOrders.length === 0 ? (
                   <div className="rounded border border-slate-100 text-slate-500 text-xs px-3 py-8 text-center">
                     No orders
