@@ -1634,7 +1634,7 @@ export default function App() {
                   Previous
                 </button>
                 <span className="text-[11px] text-gray-700">
-                  {currentPage}/{knownTotalPages ?? "?"}
+                  {currentPage}/{knownTotalPages ?? 1}
                 </span>
                 <button
                   className="px-2 py-1 border border-gray-300 rounded text-xs disabled:opacity-50"
