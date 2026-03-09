@@ -82,6 +82,7 @@ interface ApiResult<T> {
 
 type SearchMode = "all" | "security" | "single";
 const QUERY_BASE = "/trade-query";
+const ANALYSE_PAGE_SESSION_KEY = "stms.showAnalysePage";
 
 /** 生成客户端订单号。 */
 const generateId = (): string => {
@@ -539,7 +540,13 @@ function MainPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(!!localStorage.getItem('authToken'));
   const [currentUser, setCurrentUser] = useState<string | null>(localStorage.getItem('shareholderId'));
   const [showProfilePage, setShowProfilePage] = useState(false);
-  const [showAnalysePage, setShowAnalysePage] = useState(false);
+  const [showAnalysePage, setShowAnalysePage] = useState<boolean>(() => {
+    try {
+      return sessionStorage.getItem(ANALYSE_PAGE_SESSION_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
   const [userInfoRows, setUserInfoRows] = useState<ShareholderInfoItem[]>([]);
   const [loadingUserInfo, setLoadingUserInfo] = useState(false);
   const [userInfoError, setUserInfoError] = useState<string | null>(null);
@@ -727,6 +734,19 @@ function MainPage() {
     }
     cancelingOrderIdsRef.current = nextCancelingIds;
   }, [orders]);
+
+  // 记住分析页开关，避免浏览器刷新后回到首页
+  useEffect(() => {
+    try {
+      if (showAnalysePage) {
+        sessionStorage.setItem(ANALYSE_PAGE_SESSION_KEY, "1");
+      } else {
+        sessionStorage.removeItem(ANALYSE_PAGE_SESSION_KEY);
+      }
+    } catch {
+      // 忽略 sessionStorage 不可用场景
+    }
+  }, [showAnalysePage]);
 
   /**
    * 提交新订单，调用后端 /trade。
@@ -1024,10 +1044,22 @@ function MainPage() {
     setAnalysisLoading(true);
     setAnalysisError(null);
     try {
+      const formatDate = (date: Date): string => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+      };
+      const endDate = new Date();
+      const startDate = new Date(endDate);
+      startDate.setDate(endDate.getDate() - 29);
+      const startTime = formatDate(startDate);
+      const endTime = formatDate(endDate);
+
       const [qtyResp, securityResp, shareholderResp] = await Promise.all([
-        api.getTop10Qty(),
-        api.getTop10SecurityAmount(),
-        api.getTop10ShareholderAmount(),
+        api.getTop10Qty(startTime, endTime),
+        api.getTop10SecurityAmount(startTime, endTime),
+        api.getTop10ShareholderAmount(startTime, endTime),
       ]);
       setAnalysisData({
         qtySeries: toNumberSeries(qtyResp?.cumQty),
