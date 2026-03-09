@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.deser.DataFormatReaders;
 import com.stms.common.constant.OrderStatusConstant;
 import com.stms.common.constant.RedisConstant;
 import com.stms.common.constant.MatchLogConstant;
+import com.stms.common.domain.entity.quotation;
 import com.stms.match.domain.dto.CancelDTO;
 import com.stms.match.domain.dto.OrderDTO;
 import com.stms.match.domain.entity.Transaction;
@@ -16,14 +17,18 @@ import com.stms.match.service.TradeSyncDatabaseService;
 import com.stms.match.utils.MatchingOrder;
 import com.stms.match.utils.OrderBook;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
+import java.time.LocalDateTime;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
@@ -39,6 +44,7 @@ public class MatchServiceImpl extends ServiceImpl<TransactionMapper, Transaction
 
     @Resource
     private TradeSyncDatabaseService tradeSyncDatabaseService;
+
 
     @Override
     public void processOrder(OrderDTO order) {
@@ -174,6 +180,19 @@ public class MatchServiceImpl extends ServiceImpl<TransactionMapper, Transaction
             log.info(MatchLogConstant.MATCH_EXECUTE_SUCCESS, transaction.getSecurityId(), execPrice, execQty);
             updateRedisAfterTrade(takerOrder, execQty, execPrice);
             updateRedisAfterTrade(makerOrder, execQty, execPrice);
+            quotation quotations = new quotation();
+            quotations.setSecurityId(transaction.getSecurityId());
+
+            quotations.setBidPrice(execPrice); // 买价更新为成交价
+            quotations.setAskPrice(execPrice); // 卖价更新为成交价
+            // 市场（如果订单DTO中有市场字段，替换为真实值，这里先给默认值）
+            quotations.setMarket(buyOrder.getOrderDTO().getMarket()); // 可改为 order.getMarket() 等真实字段
+            // 更新时间：当前时间
+            quotations.setUpdateTime(LocalDateTime.now());
+
+            // 2. 调用价格同步函数
+            tradeSyncDatabaseService.syncPriceToQuotation(quotations);
+
         } catch (Exception e) {
             log.error(MatchLogConstant.MATCH_EXECUTE_ROLLBACK, transaction.getSecurityId(), execPrice, execQty);
             takerOrder.setCanceled(true);
@@ -209,7 +228,7 @@ public class MatchServiceImpl extends ServiceImpl<TransactionMapper, Transaction
 
                 // 4. 将更新后的Map重新序列化为JSON，并写回Redis（重置过期时间为1天）
                 String updatedOrderJson = objectMapper.writeValueAsString(orderMap);
-                stringRedisTemplate.opsForValue().set(statusKey, updatedOrderJson, 1, java.util.concurrent.TimeUnit.DAYS);
+                stringRedisTemplate.opsForValue().set(statusKey, updatedOrderJson, 1, TimeUnit.DAYS);
 
             } catch (Exception e) {
                 log.error(MatchLogConstant.MATCH_REDIS_UPDATE_ERROR, order.getOrderDTO().getClOrderId(), e.getMessage());
@@ -236,7 +255,7 @@ public class MatchServiceImpl extends ServiceImpl<TransactionMapper, Transaction
 
                 // 3. 写回Redis
                 String updatedOrderJson = objectMapper.writeValueAsString(orderMap);
-                stringRedisTemplate.opsForValue().set(statusKey, updatedOrderJson, 1, java.util.concurrent.TimeUnit.DAYS);
+                stringRedisTemplate.opsForValue().set(statusKey, updatedOrderJson, 1, TimeUnit.DAYS);
             } catch (Exception e) {
                 log.error(MatchLogConstant.MATCH_REDIS_CANCEL_ERROR, orderId, e.getMessage());
             }
@@ -265,7 +284,7 @@ public class MatchServiceImpl extends ServiceImpl<TransactionMapper, Transaction
 
         // 3. 用随机大写字母和数字补齐剩下的位数
         StringBuilder sb = new StringBuilder(timePart);
-        java.util.concurrent.ThreadLocalRandom random = java.util.concurrent.ThreadLocalRandom.current();
+        ThreadLocalRandom random = ThreadLocalRandom.current();
         String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
         for (int i = 0; i < randomLen; i++) {
             sb.append(chars.charAt(random.nextInt(chars.length())));

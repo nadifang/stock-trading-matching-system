@@ -14,5 +14,6 @@ public interface TradeSyncDatabaseService extends IService<quotation> {
 
     void hadQuotation(quotationDTO quotationDTO);
 
+    void syncPriceToQuotation(quotation quotations);
     quotation getQuotationBySecurityId(String securityId);
 }

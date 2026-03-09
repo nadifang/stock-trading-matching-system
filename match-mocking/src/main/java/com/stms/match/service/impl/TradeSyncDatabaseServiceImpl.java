@@ -49,7 +49,7 @@ public class TradeSyncDatabaseServiceImpl extends ServiceImpl<quotationMapper,qu
         //syncPriceToQuotation();
     }
 
-    private void syncPriceToQuotation(quotation quotations) {
+    public void syncPriceToQuotation(quotation quotations) {
         // 先查该证券是否已有行情记录
         quotation quote = lambdaQuery().eq(quotation::getSecurityId, quotations.getSecurityId()).one();
 
