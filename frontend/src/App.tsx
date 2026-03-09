@@ -81,7 +81,7 @@ interface ApiResult<T> {
 }
 
 type SearchMode = "all" | "security" | "single";
-const QUERY_BASE = import.meta.env?.VITE_QUERY_API_BASE || "/trade-query";
+const QUERY_BASE = "/trade-query";
 const ANALYSE_PAGE_SESSION_KEY = "stms.showAnalysePage";
 
 /** 生成客户端订单号。 */
@@ -530,7 +530,6 @@ function MainPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(10);
   const [totalOrders, setTotalOrders] = useState<number | null>(null);
-  const [loadingOrderList, setLoadingOrderList] = useState(false);
   const [listReloadToken, setListReloadToken] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -1151,7 +1150,6 @@ function MainPage() {
 
   const fetchOrderList = useCallback(
     async (page: number, securityId?: string): Promise<void> => {
-      setLoadingOrderList(true);
       const params = new URLSearchParams();
       params.set("page", String(page));
       params.set("current", String(page));
@@ -1189,15 +1187,20 @@ function MainPage() {
         const safeOrders = rows.map((item) =>
           toOrder((item ?? {}) as Partial<Order> & Record<string, unknown>)
         );
+        const visibleOrders =
+          isLoggedIn && currentUser
+            ? safeOrders.filter((order) => order.shareholderId === currentUser)
+            : safeOrders;
         setErrorMsg(null);
-        setOrders(safeOrders);
-        setTotalOrders(nextTotalOrders);
+        setOrders(visibleOrders);
+        setTotalOrders(
+          isLoggedIn && currentUser ? visibleOrders.length : nextTotalOrders
+        );
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "Query list failed";
         setErrorMsg(msg);
-        // 保留当前分页与列表，避免瞬时请求失败把页码错误重置为 1/1
-      } finally {
-        setLoadingOrderList(false);
+        setOrders([]);
+        setTotalOrders(0);
       }
     },
     [currentUser, isLoggedIn, pageSize, toOrder, unwrapApiData]
@@ -1346,12 +1349,6 @@ function MainPage() {
     if (knownTotalPages === null) return;
     setCurrentPage((prev) => Math.min(prev, knownTotalPages));
   }, [knownTotalPages]);
-
-  useEffect(() => {
-    // 账号切换后先重置分页状态，避免沿用上一个账号的页数显示
-    setCurrentPage(1);
-    setTotalOrders(null);
-  }, [currentUser, isLoggedIn]);
 
   useEffect(() => {
     if (searchMode === "single") return;
@@ -1612,8 +1609,8 @@ function MainPage() {
                     No orders
                   </div>
                 ) : (
-                  pagedOrders.map((o, idx) => (
-                    <div key={`${o.clOrderId}-${idx}`} className="rounded border border-slate-200 bg-slate-50 px-2 py-2">
+                  pagedOrders.map((o) => (
+                    <div key={o.clOrderId} className="rounded border border-slate-200 bg-slate-50 px-2 py-2">
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-sm font-semibold text-slate-800">{o.securityId}</span>
                         <span className={`px-2 py-0.5 rounded text-[11px] ${getStatusClassName(o.status)}`}>
@@ -1639,7 +1636,7 @@ function MainPage() {
                 <button
                   className="px-2 py-1 border border-gray-300 rounded text-xs disabled:opacity-50"
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={loadingOrderList || searchMode === "single" || currentPage === 1}
+                  disabled={searchMode === "single" || currentPage === 1}
                 >
                   Previous
                 </button>
@@ -1649,7 +1646,7 @@ function MainPage() {
                 <button
                   className="px-2 py-1 border border-gray-300 rounded text-xs disabled:opacity-50"
                   onClick={() => setCurrentPage((p) => p + 1)}
-                  disabled={loadingOrderList || !canGoNext}
+                  disabled={!canGoNext}
                 >
                   Next
                 </button>
