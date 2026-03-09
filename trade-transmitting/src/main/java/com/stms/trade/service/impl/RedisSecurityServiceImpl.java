@@ -21,9 +21,6 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 @Service
 public class RedisSecurityServiceImpl extends ServiceImpl<orderMapper, Order> implements RedisSecurityService{
-    private int bloomOffset(String value) {
-        return Math.floorMod(value.hashCode(), RedisConstant.BF_SIZE);
-    }
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;
@@ -41,9 +38,9 @@ public class RedisSecurityServiceImpl extends ServiceImpl<orderMapper, Order> im
 
         long now = System.currentTimeMillis() / 1000; // 当前秒级时间戳
         String windowKey = RedisConstant.DUPLICATE_ORDER_BF_KEY + (now / RedisConstant.DUPLICATE_WINDOW_SECONDS); // 按时间窗口分组
-        int hash1 = Math.floorMod(clOrderId.hashCode(), Integer.MAX_VALUE);
-        int hash2 = Math.floorMod((clOrderId + "salt1").hashCode(), Integer.MAX_VALUE);
-        int hash3 = Math.floorMod((clOrderId + "salt2").hashCode(), Integer.MAX_VALUE);
+        int hash1 = Math.abs(clOrderId.hashCode());
+        int hash2 = Math.abs((clOrderId + "salt1").hashCode());
+        int hash3 = Math.abs((clOrderId + "salt2").hashCode());
 
         // 计算在 Bitmap 中的位置
         int pos1 = hash1 % RedisConstant.BF_SIZE;
@@ -87,7 +84,7 @@ public class RedisSecurityServiceImpl extends ServiceImpl<orderMapper, Order> im
         // 生产环境建议使用 RedisBloom 模块或 Guava BloomFilter
         try {
             return Boolean.TRUE.equals(
-                    stringRedisTemplate.opsForValue().getBit(RedisConstant.BLOOM_FILTER_KEY, bloomOffset(clOrderId))
+                    stringRedisTemplate.opsForValue().getBit(RedisConstant.BLOOM_FILTER_KEY, clOrderId.hashCode())
             );
         } catch (Exception e) {
             log.error("布隆过滤器检查失败，订单ID：{}", clOrderId, e);
@@ -100,7 +97,7 @@ public class RedisSecurityServiceImpl extends ServiceImpl<orderMapper, Order> im
      */
     public void addOrderIdToBloomFilter(String clOrderId) {
         if (StringUtils.isNotBlank(clOrderId)) {
-            stringRedisTemplate.opsForValue().setBit(RedisConstant.BLOOM_FILTER_KEY, bloomOffset(clOrderId), true);
+            stringRedisTemplate.opsForValue().setBit(RedisConstant.BLOOM_FILTER_KEY, clOrderId.hashCode(), true);
         }
     }
 
