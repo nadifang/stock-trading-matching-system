@@ -2,12 +2,15 @@ package com.stms.match.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.stms.common.constant.OrderStatusConstant;
 import com.stms.common.domain.entity.Order;
 import com.stms.common.domain.entity.quotation;
 import com.stms.match.domain.entity.Transaction;
 import com.stms.match.mapper.OrderMapper;
 import com.stms.match.mapper.TransactionMapper;
+import com.stms.quotation.domain.dto.quotationDTO;
+import com.stms.quotation.domain.vo.quotationVO;
 import com.stms.quotation.mapper.quotationMapper;
 import com.stms.match.service.TradeSyncDatabaseService;
 import com.stms.match.utils.MatchingOrder;
@@ -18,7 +21,7 @@ import javax.annotation.Resource;
 import java.time.LocalDateTime;
 
 @Service
-public class TradeSyncDatabaseServiceImpl implements TradeSyncDatabaseService {
+public class TradeSyncDatabaseServiceImpl extends ServiceImpl<quotationMapper,quotation> implements TradeSyncDatabaseService{
 
     @Resource
     private TransactionMapper transactionMapper;
@@ -26,8 +29,6 @@ public class TradeSyncDatabaseServiceImpl implements TradeSyncDatabaseService {
     @Resource
     private OrderMapper orderMapper;
 
-    @Resource
-    private quotationMapper quotationMapper;
 
     @Transactional(rollbackFor = Exception.class)
     public void syncTradeToDatabase(MatchingOrder buyOrder, MatchingOrder sellOrder, Long execQty, Double execPrice, Transaction transaction) {
@@ -45,35 +46,23 @@ public class TradeSyncDatabaseServiceImpl implements TradeSyncDatabaseService {
         transaction.setExecTime(LocalDateTime.now());
         transactionMapper.insert(transaction);
 
-        syncPriceToQuotation(transaction.getSecurityId(), execPrice, buyOrder.getOrderDTO().getMarket());
+        //syncPriceToQuotation();
     }
 
-    private void syncPriceToQuotation(String securityId, Double latestPrice, String market) {
+    private void syncPriceToQuotation(quotation quotations) {
         // 先查该证券是否已有行情记录
-        quotation quote = quotationMapper.selectOne(
-                new LambdaQueryWrapper<quotation>()
-                        .eq(quotation::getSecurityId, securityId)
-        );
+        quotation quote = lambdaQuery().eq(quotation::getSecurityId, quotations.getSecurityId()).one();
 
         if (quote != null) {
             // 有记录：更新买一价/卖一价为最新成交价，更新时间
-            quotationMapper.update(
-                    null,
-                    new LambdaUpdateWrapper<quotation>()
-                            .eq(quotation::getSecurityId, securityId)
-                            .set(quotation::getBidPrice, latestPrice)  // 买一价 = 撮合成交价
-                            .set(quotation::getAskPrice, latestPrice)  // 卖一价 = 撮合成交价
-                            .set(quotation::getUpdateTime, LocalDateTime.now())
-            );
+            lambdaUpdate().eq(quotation::getSecurityId, quotations.getSecurityId())
+                    .set(quotation::getBidPrice, quotations.getBidPrice())
+                    .set(quotation::getAskPrice, quotations.getAskPrice())
+                    .set(quotation::getUpdateTime, LocalDateTime.now())
+                    .update();
         } else {
             // 无记录：插入新行情（避免quotation模块查不到）
-            quotation newQuote = new quotation();
-            newQuote.setSecurityId(securityId);
-            newQuote.setMarket(market);  // 从订单取market，更准确
-            newQuote.setBidPrice(latestPrice);
-            newQuote.setAskPrice(latestPrice);
-            newQuote.setUpdateTime(LocalDateTime.now());
-            quotationMapper.insert(newQuote);
+            save(quotations);
         }
     }
 
@@ -107,5 +96,27 @@ public class TradeSyncDatabaseServiceImpl implements TradeSyncDatabaseService {
                 // 扣减剩余数量
                 .setSql("remaining_qty = remaining_qty - " + canceledQty)
         );
+    }
+
+    @Override
+    public void hadQuotation(quotationDTO quotationDTO) {
+        quotation quotations = convertoQuotation(quotationDTO);
+        syncPriceToQuotation(quotations);
+    }
+
+    public quotation getQuotationBySecurityId(String securityId) {
+        return lambdaQuery().eq(quotation::getSecurityId, securityId).one();
+    }
+
+    private quotation convertoQuotation(quotationDTO quotationDTO) {
+        quotation quotations = new quotation();
+        String securityId = (quotationDTO.getSecurityId() != null) ? new String(quotationDTO.getSecurityId()) : null;
+        String market = (quotationDTO.getMarket() != null) ? new String(quotationDTO.getMarket()) : null;
+        quotations.setSecurityId(securityId);
+        quotations.setMarket(market);
+        quotations.setBidPrice(quotationDTO.getBidPrice());
+        quotations.setAskPrice(quotationDTO.getAskPrice());
+        quotations.setUpdateTime(LocalDateTime.now());
+        return quotations;
     }
 }
