@@ -152,7 +152,12 @@ public class orderServiceImpl extends ServiceImpl<orderMapper, Order> implements
                     orderCommand.getPrice(),
                     orderCommand.getShareholderId()
             );
-            orderEventPublisherService.publishOrderCreatedEvent(event);
+            try {
+                orderEventPublisherService.publishOrderCreatedEvent(event);
+            } catch (Exception e) {
+                // 下单主流程已入队并会落库，MQ异常仅影响后续异步链路，不应把提交接口打成500
+                log.error("订单事件发布失败，clOrderId={}", orderCommand.getClOrderId(), e);
+            }
         }
 
         //6.返回订单
