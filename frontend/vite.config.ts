@@ -28,6 +28,10 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/quotation-api/, ''),
       },
+      '/export-data': {
+        target: 'http://localhost:8065',
+        changeOrigin: true,
+      },
       '/ws': {
         target: 'http://localhost:8087',
         changeOrigin: true,

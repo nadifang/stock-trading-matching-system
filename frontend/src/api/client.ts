@@ -3,6 +3,14 @@ import type { CancelOrderDTO, Result, SubmitOrderDTO } from "../types/server";
 const TRADE_BASE_URL = import.meta.env?.VITE_API_BASE || "/api";
 const USER_BASE_URL = import.meta.env?.VITE_USER_API_BASE || "/user-api";
 const QUOTATION_BASE_URL = import.meta.env?.VITE_QUOTATION_API_BASE || "/quotation-api";
+const TRADE_PREFIX = "/trade-transmitting";
+
+const resolveTradePath = (endpoint: "submit" | "cancel"): string => {
+  const normalizedBase = String(TRADE_BASE_URL || "").replace(/\/+$/, "");
+  return normalizedBase.endsWith(TRADE_PREFIX)
+    ? `/${endpoint}`
+    : `${TRADE_PREFIX}/${endpoint}`;
+};
 
 export interface LoginDTO {
   shareholderId: string;
@@ -98,13 +106,13 @@ export const api = {
     }, { withAuth: true });
   },
   submitOrder(dto: SubmitOrderDTO) {
-    return request<SubmitOrderResp>(TRADE_BASE_URL, "/trade-transmitting/submit", {
+    return request<SubmitOrderResp>(TRADE_BASE_URL, resolveTradePath("submit"), {
       method: "POST",
       body: JSON.stringify(dto),
     }, { withAuth: false });
   },
   cancelOrder(dto: CancelOrderDTO) {
-    return request<CancelOrderResp>(TRADE_BASE_URL, "/trade-transmitting/cancel", {
+    return request<CancelOrderResp>(TRADE_BASE_URL, resolveTradePath("cancel"), {
       method: "POST",
       body: JSON.stringify(dto),
     }, { withAuth: false });

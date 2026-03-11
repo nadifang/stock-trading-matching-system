@@ -20,6 +20,7 @@ export default function AuthModal({
   lang,
   initialTab = 'login',
 }: AuthModalProps) {
+  void _onRegisterSuccess;
   const [activeTab, setActiveTab] = useState<"login" | "register">(initialTab);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

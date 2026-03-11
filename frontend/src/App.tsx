@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type PublishQuotationDTO, type ShareholderInfoItem } from "./api/client";
 import type { CancelOrderDTO, SubmitOrderDTO, TradeReturnVO } from "./types/server";
 import { connectTradeReturnWS, disconnectTradeReturnWS } from "./services/ws";
@@ -6,6 +6,7 @@ import BannerCarousel from "./components/BannerCarousel";
 import TopHeader from "./components/TopHeader";
 import MarketData from "./components/MarketData";
 import AuthModal from "./components/auth/AuthModal";
+import AnalysisPage from "./pages/AnalysisPage";
 
 /**
  * 订单状态枚举。
@@ -308,150 +309,6 @@ const getStatusClassName = (status: OrderStatus): string => {
   }
 };
 
-interface HistoryPoint {
-  day: string;
-  buyVolume: number;
-  sellVolume: number;
-}
-
-const toSafeNum = (value: unknown): number => {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
-};
-
-const normalizeHistory = (raw: unknown): HistoryPoint[] => {
-  const rows = Array.isArray(raw)
-    ? raw
-    : raw && typeof raw === "object"
-      ? (raw as Record<string, unknown>).records ??
-        (raw as Record<string, unknown>).list ??
-        (raw as Record<string, unknown>).items ??
-        (raw as Record<string, unknown>).data ??
-        []
-      : [];
-
-  if (!Array.isArray(rows)) return [];
-
-  return rows
-    .map((item, index) => {
-      const row = (item ?? {}) as Record<string, unknown>;
-      const dayRaw = row.day ?? row.date ?? row.tradeDate ?? row.tradingDate;
-      const day = String(dayRaw ?? `D${index + 1}`);
-      const buyVolume = toSafeNum(
-        row.buyVolume ?? row.buyQty ?? row.buy_quantity ?? row.buy ?? row.buyAmt
-      );
-      const sellVolume = toSafeNum(
-        row.sellVolume ?? row.sellQty ?? row.sell_quantity ?? row.sell ?? row.sellAmt
-      );
-      return { day, buyVolume, sellVolume };
-    })
-    .slice(-30);
-};
-
-const buildSmoothPath = (points: Array<{ x: number; y: number }>): string => {
-  if (points.length === 0) return "";
-  if (points.length === 1) {
-    const p = points[0];
-    return `M ${p.x} ${p.y}`;
-  }
-
-  let d = `M ${points[0].x} ${points[0].y}`;
-  for (let i = 1; i < points.length; i += 1) {
-    const prev = points[i - 1];
-    const curr = points[i];
-    const cx = (prev.x + curr.x) / 2;
-    const cy = (prev.y + curr.y) / 2;
-    d += ` Q ${prev.x} ${prev.y} ${cx} ${cy}`;
-  }
-  const last = points[points.length - 1];
-  const beforeLast = points[points.length - 2];
-  d += ` Q ${beforeLast.x} ${beforeLast.y} ${last.x} ${last.y}`;
-  return d;
-};
-
-function OrderChart({ securityId }: { securityId: string }) {
-  const [series, setSeries] = useState<HistoryPoint[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    const loadHistory = async (): Promise<void> => {
-      setLoading(true);
-      try {
-        const params = new URLSearchParams({ securityId });
-        const resp = await fetch(`${QUERY_BASE}/history?${params.toString()}`, {
-          method: "GET",
-          credentials: "include",
-          signal: controller.signal,
-        });
-        const raw = (await resp.json()) as unknown;
-        const payload =
-          raw && typeof raw === "object" && "success" in raw
-            ? (((raw as ApiResult<unknown>).data as unknown) ?? [])
-            : raw;
-        setSeries(normalizeHistory(payload));
-      } catch {
-        if (controller.signal.aborted) return;
-        setSeries([]);
-      } finally {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
-      }
-    };
-
-    void loadHistory();
-    return () => controller.abort();
-  }, [securityId]);
-
-  const chart = useMemo(() => {
-    const width = 340;
-    const height = 68;
-    const padX = 4;
-    const padY = 6;
-    const data = series.length > 0 ? series : [{ day: "flat", buyVolume: 0, sellVolume: 0 }];
-    const maxValue = Math.max(
-      1,
-      ...data.map((d) => d.buyVolume),
-      ...data.map((d) => d.sellVolume)
-    );
-    const stepX = data.length > 1 ? (width - padX * 2) / (data.length - 1) : width / 2;
-    const toY = (value: number): number =>
-      height - padY - (value / maxValue) * (height - padY * 2);
-
-    const buyPoints = data.map((d, idx) => ({ x: padX + idx * stepX, y: toY(d.buyVolume) }));
-    const sellPoints = data.map((d, idx) => ({ x: padX + idx * stepX, y: toY(d.sellVolume) }));
-
-    return {
-      width,
-      height,
-      buyPath: buildSmoothPath(buyPoints),
-      sellPath: buildSmoothPath(sellPoints),
-      hasData: series.length > 0,
-    };
-  }, [series]);
-
-  return (
-    <div className="h-full w-full rounded-lg bg-slate-50/80 border border-slate-100 px-2 py-1 flex items-center justify-center">
-      {loading ? (
-        <span className="text-xs text-slate-400">Loading...</span>
-      ) : (
-        <div className="relative w-full h-full flex items-center justify-center">
-          <svg
-            viewBox={`0 0 ${chart.width} ${chart.height}`}
-            className="w-full h-full"
-            preserveAspectRatio="none"
-          >
-            <path d={chart.buyPath} fill="none" stroke="#2563eb" strokeWidth="2.2" strokeLinecap="round" />
-            <path d={chart.sellPath} fill="none" stroke="#dc2626" strokeWidth="2.2" strokeLinecap="round" />
-          </svg>
-          {!chart.hasData && <span className="absolute text-[11px] text-slate-400">暂无趋势</span>}
-        </div>
-      )}
-    </div>
-  );
-}
-
 /**
  * 交易员终端页面。
  */
@@ -473,7 +330,7 @@ export default function App() {
   const [activeAuthTab, setActiveAuthTab] = useState<"login" | "register">('login');
   const [isLoggedIn, setIsLoggedIn] = useState(!!localStorage.getItem('authToken'));
   const [currentUser, setCurrentUser] = useState<string | null>(localStorage.getItem('shareholderId'));
-  const [pageMode, setPageMode] = useState<"trade" | "quotation-access" | "user-info">("trade");
+  const [pageMode, setPageMode] = useState<"trade" | "quotation-access" | "user-info" | "analysis">("trade");
   const [quotationForm, setQuotationForm] = useState<PublishQuotationDTO>({
     market: "XSHG",
     securityId: "600030",
@@ -487,6 +344,8 @@ export default function App() {
   const [userInfoMessage, setUserInfoMessage] = useState<string | null>(null);
   const cancelingOrderIdsRef = useRef<Set<string>>(new Set());
   const cancelPrevStatusRef = useRef<Map<string, OrderStatus>>(new Map());
+  const listRequestSeqRef = useRef(0);
+  const authHeaderRef = useRef<string | null>(localStorage.getItem("authToken"));
 
   const isAdmin = useMemo(() => {
     const role = (
@@ -896,11 +755,13 @@ export default function App() {
   const handleLoginSuccess = useCallback(() => {
     setIsLoggedIn(true);
     setCurrentUser(localStorage.getItem('shareholderId'));
+    authHeaderRef.current = localStorage.getItem("authToken");
   }, []);
 
   const handleRegisterSuccess = useCallback(() => {
     setIsLoggedIn(true);
     setCurrentUser(localStorage.getItem('shareholderId'));
+    authHeaderRef.current = localStorage.getItem("authToken");
   }, []);
 
   const handleLogout = useCallback(() => {
@@ -908,6 +769,13 @@ export default function App() {
     localStorage.removeItem('shareholderId');
     setIsLoggedIn(false);
     setCurrentUser(null);
+    authHeaderRef.current = null;
+  }, []);
+
+  const buildAuthHeaders = useCallback((): HeadersInit | undefined => {
+    const token = authHeaderRef.current;
+    if (!token) return undefined;
+    return { authorization: token };
   }, []);
 
   const handleOpenLogin = useCallback(() => {
@@ -921,6 +789,17 @@ export default function App() {
   }, []);
 
   const toOrder = useCallback((raw: Partial<Order> & Record<string, unknown>): Order => {
+    const clOrderIdRaw =
+      raw.clOrderId ??
+      raw.orderId ??
+      raw.origClOrderId ??
+      raw.order_id;
+    const securityIdRaw =
+      raw.securityId ??
+      raw.security_id ??
+      raw.symbol ??
+      raw.stockCode ??
+      raw.stock_code;
     const sideRaw = String(raw.side ?? "B").toUpperCase();
     const side: Side = sideRaw === "S" || sideRaw === "SELL" ? "S" : "B";
     const remainingQtyRaw = Number(raw.remainingQty ?? raw.remaining_qty ?? 0);
@@ -935,9 +814,9 @@ export default function App() {
       OrderStatus.Pending;
 
     return {
-      clOrderId: String(raw.clOrderId ?? ""),
+      clOrderId: String(clOrderIdRaw ?? ""),
       market: String(raw.market ?? ""),
-      securityId: String(raw.securityId ?? ""),
+      securityId: String(securityIdRaw ?? ""),
       side,
       qty,
       price: Number(raw.price ?? 0) || 0,
@@ -971,6 +850,9 @@ export default function App() {
 
   const fetchOrderList = useCallback(
     async (page: number, securityId?: string): Promise<void> => {
+      const requestSeq = listRequestSeqRef.current + 1;
+      listRequestSeqRef.current = requestSeq;
+
       const params = new URLSearchParams();
       params.set("page", String(page));
       params.set("current", String(page));
@@ -983,6 +865,7 @@ export default function App() {
       try {
         const resp = await fetch(`${QUERY_BASE}/list?${params.toString()}`, {
           method: "GET",
+          headers: buildAuthHeaders(),
           credentials: "include",
         });
         const raw = (await resp.json()) as unknown;
@@ -1008,17 +891,19 @@ export default function App() {
         const safeOrders = rows.map((item) =>
           toOrder((item ?? {}) as Partial<Order> & Record<string, unknown>)
         );
+        if (requestSeq !== listRequestSeqRef.current) return;
         setErrorMsg(null);
         setOrders(safeOrders);
         setTotalOrders(nextTotalOrders);
       } catch (e: unknown) {
+        if (requestSeq !== listRequestSeqRef.current) return;
         const msg = e instanceof Error ? e.message : "Query list failed";
         setErrorMsg(msg);
         setOrders([]);
         setTotalOrders(0);
       }
     },
-    [pageSize, toOrder, unwrapApiData]
+    [buildAuthHeaders, pageSize, toOrder, unwrapApiData]
   );
 
   const fetchSingleOrder = useCallback(
@@ -1029,6 +914,7 @@ export default function App() {
       try {
         const resp = await fetch(`${QUERY_BASE}/query?${params.toString()}`, {
           method: "GET",
+          headers: buildAuthHeaders(),
           credentials: "include",
         });
         const raw = (await resp.json()) as unknown;
@@ -1047,7 +933,7 @@ export default function App() {
         setTotalOrders(0);
       }
     },
-    [toOrder, unwrapApiData]
+    [buildAuthHeaders, toOrder, unwrapApiData]
   );
 
   const fetchOrderBySecurityId = useCallback(
@@ -1058,6 +944,7 @@ export default function App() {
       try {
         const resp = await fetch(`${QUERY_BASE}/query?${params.toString()}`, {
           method: "GET",
+          headers: buildAuthHeaders(),
           credentials: "include",
         });
         const raw = (await resp.json()) as unknown;
@@ -1076,7 +963,7 @@ export default function App() {
         setTotalOrders(0);
       }
     },
-    [toOrder, unwrapApiData]
+    [buildAuthHeaders, toOrder, unwrapApiData]
   );
 
   const text = useMemo(
@@ -1245,6 +1132,9 @@ export default function App() {
     void loadUserInfo();
   }, [loadUserInfo]);
 
+  const openAnalysisPage = useCallback(() => {
+    setPageMode("analysis");
+  }, []);
   const handlePublishQuotation = useCallback(async () => {
     if (!isAdmin) return;
     if (!quotationForm.securityId.trim()) {
@@ -1269,8 +1159,7 @@ export default function App() {
     }
   }, [isAdmin, lang, quotationForm]);
 
-  if (pageMode === "quotation-access") {
-    return (
+  const quotationAccessView = (
       <div
         className="p-6 min-h-screen"
         style={{
@@ -1291,6 +1180,8 @@ export default function App() {
             onLoginClick={handleOpenLogin}
             onRegisterClick={handleOpenRegister}
             onLogoutClick={handleLogout}
+            onAnalysisClick={openAnalysisPage}
+            analysisActive={pageMode === "analysis"}
           />
         </div>
         <section className="w-[95%] mx-auto">
@@ -1411,11 +1302,9 @@ export default function App() {
           initialTab={activeAuthTab}
         />
       </div>
-    );
-  }
+     );
 
-  if (pageMode === "user-info") {
-    return (
+  const userInfoView = (
       <div
         className="p-6 min-h-screen"
         style={{
@@ -1436,6 +1325,8 @@ export default function App() {
             onLoginClick={handleOpenLogin}
             onRegisterClick={handleOpenRegister}
             onLogoutClick={handleLogout}
+            onAnalysisClick={openAnalysisPage}
+            analysisActive={pageMode === "analysis"}
           />
         </div>
         <section className="w-[95%] mx-auto">
@@ -1512,10 +1403,9 @@ export default function App() {
           initialTab={activeAuthTab}
         />
       </div>
-    );
-  }
+     );
 
-  return (
+  const mainView = (
     <div
       className="p-6 min-h-screen"
       style={{
@@ -1536,12 +1426,14 @@ export default function App() {
           onLoginClick={handleOpenLogin}
           onRegisterClick={handleOpenRegister}
           onLogoutClick={handleLogout}
+            onAnalysisClick={openAnalysisPage}
+            analysisActive={pageMode === "analysis"}
         />
       </div>
 
       <section className="w-[95%] mx-auto mb-6">
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_minmax(630px,840px)_1fr] gap-1 items-stretch">
-          <div className="hidden lg:block w-full max-w-[280px] h-[500px] justify-self-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[280px_minmax(630px,1fr)_360px] gap-4 items-start">
+          <div className="hidden lg:block w-full h-[500px] max-w-[280px] justify-self-start">
             <div className="h-full overflow-y-auto">
               <MarketData lang={lang} isAdmin={false} />
             </div>
@@ -1584,169 +1476,168 @@ export default function App() {
             </div>
           </div>
 
-          <div className="w-full lg:max-w-[280px] lg:justify-self-end">
-            <div className="bg-white p-4 rounded-lg shadow h-full grid grid-cols-1 gap-3">
-              <div className="flex flex-col">
-                <label className="text-sm text-gray-600 mb-1">{text.market}</label>
-                <select
-                  className="border p-2 rounded"
-                  value={form.market}
-                  onChange={(e) => setForm({ ...form, market: e.target.value })}
-                >
-                  <option value="XSHG">XSHG</option>
-                  <option value="XSHE">XSHE</option>
-                  <option value="BJSE">BJSE</option>
-                </select>
-              </div>
+          <aside className="w-full bg-white rounded-xl border border-slate-200 shadow-sm h-[500px] flex flex-col">
+            <div className="p-4 space-y-3 flex-1 overflow-y-auto">
+              {errorMsg && (
+                <div className="bg-red-50 text-red-700 border border-red-200 px-4 py-2 rounded">
+                  {errorMsg}
+                </div>
+              )}
 
-              <div className="flex flex-col">
-                <label className="text-sm text-gray-600 mb-1">{text.securityId}</label>
-                <input
-                  className="border p-2 rounded"
-                  value={form.securityId}
-                  onChange={(e) => setForm({ ...form, securityId: e.target.value })}
-                />
-              </div>
+              {orders.map((o, idx) => {
+                const remainingQty = Math.max(0, o.qty - o.cumQty);
+                return (
+                  <div
+                    key={`${o.clOrderId || "no-clord"}-${o.securityId}-${o.market}-${idx}`}
+                    className="w-full bg-slate-50 rounded-lg border border-slate-200 px-3 py-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-lg font-bold tracking-wide text-slate-900 truncate">{o.securityId}</div>
+                        <div className="text-xs text-slate-500 font-mono mt-0.5 truncate">{o.clOrderId}</div>
+                        <div className={`text-sm font-semibold mt-1 ${o.side === "B" ? "text-red-500" : "text-green-600"}`}>
+                          {o.side === "B" ? text.buy : text.sell} · {o.market}
+                        </div>
+                      </div>
 
-              <div className="flex flex-col">
-                <label className="text-sm text-gray-600 mb-1">{text.side}</label>
-                <select
-                  className="border p-2 rounded"
-                  value={form.side}
-                  onChange={(e) => setForm({ ...form, side: e.target.value as Side })}
-                >
-                  <option value="B">{text.buy}</option>
-                  <option value="S">{text.sell}</option>
-                </select>
-              </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-xs text-slate-500">剩余量</div>
+                        <div className="text-xl font-bold text-slate-900">{remainingQty}</div>
+                        <div className="text-xs text-slate-500 mt-1">
+                          Cum: <span className="font-semibold text-slate-700">{o.cumQty}</span> / Qty: {o.qty}
+                        </div>
+                        <div className="mt-2 flex justify-end items-center gap-2">
+                          <span
+                            className={`px-2 py-1 rounded text-xs ${getStatusClassName(o.status)}`}
+                            title={
+                              o.status === OrderStatus.Rejected && o.errorMsg
+                                ? `${text.errorCode}: ${o.errorCode ?? ""} ${o.errorMsg ?? ""}`
+                                : undefined
+                            }
+                          >
+                            {statusTextMap[o.status] ?? o.status}
+                          </span>
+                          {canCancel(o) && (
+                            <button
+                              className="text-red-600 hover:underline text-sm"
+                              onClick={() => handleCancel(o)}
+                            >
+                              {text.cancel}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
 
-              <div className="flex flex-col">
-                <label className="text-sm text-gray-600 mb-1">{text.price}</label>
-                <input
-                  className="border p-2 rounded"
-                  type="number"
-                  value={form.price}
-                  onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
-                />
-              </div>
+                    {o.status === OrderStatus.Rejected && o.errorMsg && (
+                      <div className="text-xs text-red-500 mt-2 truncate">{o.errorMsg}</div>
+                    )}
+                  </div>
+                );
+              })}
 
-              <div className="flex flex-col">
-                <label className="text-sm text-gray-600 mb-1">{text.quantity}</label>
-                <input
-                  className="border p-2 rounded"
-                  type="number"
-                  value={form.qty}
-                  onChange={(e) => setForm({ ...form, qty: Number(e.target.value) })}
-                />
-              </div>
+              {orders.length === 0 && (
+                <div className="rounded-xl bg-white border border-slate-100 text-slate-500 text-sm px-4 py-8 text-center">
+                  No orders
+                </div>
+              )}
 
+            </div>
+            <div className="mt-auto bg-white/95 px-4 py-3 flex items-center justify-center gap-3 border-t border-slate-100 backdrop-blur">
               <button
-                className={`mt-1 text-white py-2 rounded font-bold ${
-                  submitting ? "bg-blue-300 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"
-                }`}
-                onClick={submitOrder}
-                disabled={submitting}
+                className="px-3 py-1.5 border border-gray-300 rounded disabled:opacity-50"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={searchMode === "single" || currentPage === 1}
               >
-                {submitting ? text.submitting : text.submitOrder}
+                Previous
+              </button>
+              <span className="text-sm text-gray-700">
+                Page {currentPage} / {knownTotalPages ?? "?"}
+              </span>
+              <button
+                className="px-3 py-1.5 border border-gray-300 rounded disabled:opacity-50"
+                onClick={() => setCurrentPage((p) => p + 1)}
+                disabled={!canGoNext}
+              >
+                Next
               </button>
             </div>
-          </div>
+          </aside>
         </div>
       </section>
 
-      <div className="w-[95%] mx-auto">
-
-        {errorMsg && (
-          <div className="bg-red-50 text-red-700 border border-red-200 px-4 py-2 rounded mb-4">
-            {errorMsg}
-          </div>
-        )}
-
-        <div className="space-y-3">
-          {orders.map((o) => {
-            const remainingQty = Math.max(0, o.qty - o.cumQty);
-            return (
-              <div
-                key={o.clOrderId}
-                className="w-full min-h-[88px] bg-white rounded-xl shadow-sm hover:shadow-md hover:bg-slate-50 transition-all duration-200 px-4 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3"
+      <section className="w-[95%] mx-auto pb-6">
+        <div className="w-full bg-white p-4 rounded-lg shadow border border-slate-200">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3 items-end">
+            <div className="flex flex-col">
+              <label className="text-sm text-gray-600 mb-1">{text.market}</label>
+              <select
+                className="border p-2 rounded"
+                value={form.market}
+                onChange={(e) => setForm({ ...form, market: e.target.value })}
               >
-                <div className="w-full md:w-[22%] min-w-[180px]">
-                  <div className="text-2xl font-bold tracking-wide text-slate-900">{o.securityId}</div>
-                  <div className="text-xs text-slate-500 font-mono mt-1 truncate">{o.clOrderId}</div>
-                  <div className={`text-sm font-semibold mt-1 ${o.side === "B" ? "text-red-500" : "text-green-600"}`}>
-                    {o.side === "B" ? text.buy : text.sell} · {o.market}
-                  </div>
-                </div>
-
-                <div className="w-full md:flex-1 h-[72px]">
-                  <OrderChart securityId={o.securityId} />
-                </div>
-
-                <div className="w-full md:w-[24%] md:min-w-[220px] md:text-right">
-                  <div className="text-xs text-slate-500">剩余量</div>
-                  <div className="text-2xl font-bold text-slate-900">
-                    {remainingQty}
-                  </div>
-                  <div className="text-xs text-slate-500 mt-1">
-                    Cum: <span className="font-semibold text-slate-700">{o.cumQty}</span> / Qty: {o.qty}
-                  </div>
-                  <div className="mt-2 flex md:justify-end items-center gap-2">
-                    <span
-                      className={`px-2 py-1 rounded text-xs ${getStatusClassName(o.status)}`}
-                      title={
-                        o.status === OrderStatus.Rejected && o.errorMsg
-                          ? `${text.errorCode}: ${o.errorCode ?? ""} ${o.errorMsg ?? ""}`
-                          : undefined
-                      }
-                    >
-                      {statusTextMap[o.status] ?? o.status}
-                    </span>
-                    {canCancel(o) && (
-                      <button
-                        className="text-red-600 hover:underline text-sm"
-                        onClick={() => handleCancel(o)}
-                      >
-                        {text.cancel}
-                      </button>
-                    )}
-                  </div>
-                  {o.status === OrderStatus.Rejected && o.errorMsg && (
-                    <div className="text-xs text-red-500 mt-1 truncate">
-                      {o.errorMsg}
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-
-          {orders.length === 0 && (
-            <div className="rounded-xl bg-white border border-slate-100 text-slate-500 text-sm px-4 py-8 text-center">
-              No orders
+                <option value="XSHG">XSHG</option>
+                <option value="XSHE">XSHE</option>
+                <option value="BJSE">BJSE</option>
+              </select>
             </div>
-          )}
-        </div>
 
-        <div className="mt-4 flex items-center justify-center md:justify-end gap-3">
-          <button
-            className="px-3 py-1.5 border border-gray-300 rounded disabled:opacity-50"
-            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-            disabled={searchMode === "single" || currentPage === 1}
-          >
-            Previous
-          </button>
-          <span className="text-sm text-gray-700">
-            Page {currentPage} / {knownTotalPages ?? "?"}
-          </span>
-          <button
-            className="px-3 py-1.5 border border-gray-300 rounded disabled:opacity-50"
-            onClick={() => setCurrentPage((p) => p + 1)}
-            disabled={!canGoNext}
-          >
-            Next
-          </button>
+            <div className="flex flex-col">
+              <label className="text-sm text-gray-600 mb-1">{text.securityId}</label>
+              <input
+                className="border p-2 rounded"
+                value={form.securityId}
+                onChange={(e) => setForm({ ...form, securityId: e.target.value })}
+              />
+            </div>
+
+            <div className="flex flex-col">
+              <label className="text-sm text-gray-600 mb-1">{text.side}</label>
+              <select
+                className="border p-2 rounded"
+                value={form.side}
+                onChange={(e) => setForm({ ...form, side: e.target.value as Side })}
+              >
+                <option value="B">{text.buy}</option>
+                <option value="S">{text.sell}</option>
+              </select>
+            </div>
+
+            <div className="flex flex-col">
+              <label className="text-sm text-gray-600 mb-1">{text.price}</label>
+              <input
+                className="border p-2 rounded"
+                type="number"
+                value={form.price}
+                onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
+              />
+            </div>
+
+            <div className="flex flex-col">
+              <label className="text-sm text-gray-600 mb-1">{text.quantity}</label>
+              <input
+                className="border p-2 rounded"
+                type="number"
+                value={form.qty}
+                onChange={(e) => setForm({ ...form, qty: Number(e.target.value) })}
+              />
+            </div>
+
+          </div>
+
+          <div className="mt-3 flex justify-end">
+            <button
+              className={`px-6 text-white py-2 rounded font-bold ${
+                submitting ? "bg-blue-300 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"
+              }`}
+              onClick={submitOrder}
+              disabled={submitting}
+            >
+              {submitting ? text.submitting : text.submitOrder}
+            </button>
+          </div>
         </div>
-      </div>
+      </section>
       
       <AuthModal
         isOpen={isAuthModalOpen}
@@ -1757,5 +1648,39 @@ export default function App() {
         initialTab={activeAuthTab}
       />
     </div>
+   );
+
+  const analysisView = (
+    <AnalysisPage
+      wsConnected={wsConnected}
+      lang={lang}
+      onToggleLang={toggleLang}
+      searchValue={searchValue}
+      onSearchValueChange={(val) => setSearchValue(val)}
+      onSearch={onSearch}
+      onClearSearch={onClearSearch}
+      isLoggedIn={isLoggedIn}
+      currentUser={currentUser}
+      onLoginClick={handleOpenLogin}
+      onRegisterClick={handleOpenRegister}
+      onLogoutClick={handleLogout}
+      onBack={() => setPageMode("trade")}
+    />
   );
+
+  const tradeView = pageMode === "analysis"
+    ? analysisView
+    : pageMode === "quotation-access"
+      ? quotationAccessView
+      : pageMode === "user-info"
+        ? userInfoView
+        : mainView;
+
+  return tradeView;
 }
+
+
+
+
+
+

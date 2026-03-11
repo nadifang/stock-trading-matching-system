@@ -1,4 +1,4 @@
-﻿﻿﻿﻿import { useState } from "react";
+﻿import { useState } from "react";
 
 interface TopHeaderProps {
   wsConnected?: boolean;
@@ -14,6 +14,8 @@ interface TopHeaderProps {
   onLoginClick?: () => void;
   onRegisterClick?: () => void;
   onLogoutClick?: () => void;
+  onAnalysisClick?: () => void;
+  analysisActive?: boolean;
 }
 
 function LogoFallback() {
@@ -38,6 +40,8 @@ export default function TopHeader({
   onLoginClick,
   onRegisterClick,
   onLogoutClick,
+  onAnalysisClick,
+  analysisActive = false,
 }: TopHeaderProps) {
   const [logoLoadError, setLogoLoadError] = useState(false);
 
@@ -88,6 +92,18 @@ export default function TopHeader({
       </div>
 
       <div className="shrink-0 flex items-center gap-2">
+        <button
+          type="button"
+          className={`h-9 px-3 rounded-lg text-sm border ${
+            analysisActive
+              ? "bg-blue-600 text-white border-blue-600"
+              : "border-slate-300 text-slate-700 hover:bg-slate-50"
+          }`}
+          onClick={onAnalysisClick}
+          disabled={analysisActive}
+        >
+          数据分析
+        </button>
         <button
           type="button"
           onClick={onToggleLang}
@@ -141,3 +157,11 @@ export default function TopHeader({
     </header>
   );
 }
+
+
+
+
+
+
+
+
