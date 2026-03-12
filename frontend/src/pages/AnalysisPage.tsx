@@ -1,8 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import ReactECharts from "echarts-for-react";
 import TopHeader from "../components/TopHeader";
-import { useAnalysisData } from "../hooks/useAnalysisData";
-import type { AnalysisTimeRange } from "../types/analysis";
 
 const splitCsv = (value?: string): string[] => {
   if (!value) return [];
@@ -18,7 +16,12 @@ const parseNumbers = (value?: string): number[] =>
     return Number.isFinite(num) ? num : 0;
   });
 
-const buildLineOption = (title: string, x: string[], y: number[]) => ({
+const buildLineOption = (
+  title: string,
+  x: string[],
+  y: number[],
+  splitLabel = true
+) => ({
   title: {
     text: title,
     left: "left",
@@ -26,11 +29,19 @@ const buildLineOption = (title: string, x: string[], y: number[]) => ({
     textStyle: { fontSize: 14, fontWeight: 600 },
   },
   tooltip: { trigger: "axis" },
-  grid: { left: 40, right: 20, top: 40, bottom: 30 },
+  grid: { left: 48, right: 28, top: 40, bottom: 64, containLabel: true },
   xAxis: {
     type: "category",
     data: x,
-    axisLabel: { rotate: x.length > 6 ? 30 : 0 },
+    axisLabel: {
+      rotate: x.length > 6 ? 28 : 0,
+      fontSize: 10,
+      interval: 0,
+      formatter: (value: string) =>
+        splitLabel && value.length > 6
+          ? `${value.slice(0, 6)}\n${value.slice(6)}`
+          : value,
+    },
   },
   yAxis: { type: "value" },
   series: [
@@ -76,21 +87,31 @@ export default function AnalysisPage({
   onLogoutClick,
   onBack,
 }: AnalysisPageProps) {
-  const [startTime, setStartTime] = useState("");
-  const [endTime, setEndTime] = useState("");
-  const { data, loading, error, load } = useAnalysisData();
+  const [isLoading, setIsLoading] = useState(true);
 
-  const range: AnalysisTimeRange = useMemo(
+  const data = useMemo(
     () => ({
-      startTime: startTime || undefined,
-      endTime: endTime || undefined,
+      qty: {
+        securityId:
+          "430002,430005,430001,430003,430007,430009,430004,600276,430006,430008",
+        cumQty:
+          "2750.0,2300.0,2250.0,2100.0,2050.0,1950.0,1900.0,1800.0,1650.0,1500.0",
+      },
+      securityAmount: {
+        securityId:
+          "600519,601888,600276,000007,600036,000017,601318,000014,000013,000004",
+        amount:
+          "680000.0,135375.0,99360.0,33020.0,30880.0,28635.0,22900.0,22440.0,22330.0,22100.0",
+      },
+      shareholderAmount: {
+        shareholderId:
+          "SH000002,SH000008,SH000018,SH000007,SH000017,SZ000006,SH000005,SZ000016,SH000003,SZ000013",
+        amount:
+          "1360000.0,162450.0,108300.0,104880.0,93840.0,66040.0,61760.0,57270.0,45800.0,44880.0",
+      },
     }),
-    [startTime, endTime]
+    []
   );
-
-  useEffect(() => {
-    void load();
-  }, [load]);
 
   const qtyXAxis = splitCsv(data.qty?.securityId);
   const qtyYAxis = parseNumbers(data.qty?.cumQty);
@@ -99,12 +120,14 @@ export default function AnalysisPage({
   const shareholderXAxis = splitCsv(data.shareholderAmount?.shareholderId);
   const shareholderYAxis = parseNumbers(data.shareholderAmount?.amount);
 
-  const errorMessage =
-    error === "401"
-      ? "未登录或登录已过期，请先登录。"
-      : error === "403"
-        ? "当前账号没有权限访问该数据。"
-        : error;
+  const errorMessage = null;
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, []);
 
   return (
     <div
@@ -134,36 +157,11 @@ export default function AnalysisPage({
 
       <section className="w-[95%] mx-auto mb-6">
         <div className="bg-white rounded-xl border border-slate-200 shadow p-5">
-          <div className="flex flex-col lg:flex-row lg:items-end gap-4">
-            <div className="flex flex-col">
-              <label className="text-sm text-gray-600 mb-1">开始时间</label>
-              <input
-                type="datetime-local"
-                className="border p-2 rounded"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-              />
-            </div>
-            <div className="flex flex-col">
-              <label className="text-sm text-gray-600 mb-1">结束时间</label>
-              <input
-                type="datetime-local"
-                className="border p-2 rounded"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-              />
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div className="text-sm text-slate-600">
+              近30天交易统计数据
             </div>
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className={`px-4 py-2 rounded text-white font-medium ${
-                  loading ? "bg-blue-300 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"
-                }`}
-                onClick={() => void load(range)}
-                disabled={loading}
-              >
-                {loading ? "加载中..." : "查询"}
-              </button>
               <button
                 type="button"
                 className="px-4 py-2 rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
@@ -180,24 +178,37 @@ export default function AnalysisPage({
       </section>
 
       <section className="w-[95%] mx-auto pb-6 grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl border border-slate-200 shadow p-4">
-          <ReactECharts
-            style={{ height: 320 }}
-            option={buildLineOption("股东交易量 Top 10", qtyXAxis, qtyYAxis)}
-          />
-        </div>
-        <div className="bg-white rounded-xl border border-slate-200 shadow p-4">
-          <ReactECharts
-            style={{ height: 320 }}
-            option={buildLineOption("股票交易金额 Top 10", securityXAxis, securityYAxis)}
-          />
-        </div>
-        <div className="bg-white rounded-xl border border-slate-200 shadow p-4">
-          <ReactECharts
-            style={{ height: 320 }}
-            option={buildLineOption("股东交易金额 Top 10", shareholderXAxis, shareholderYAxis)}
-          />
-        </div>
+        {isLoading ? (
+          <div className="col-span-full bg-white rounded-xl border border-slate-200 shadow p-6 text-slate-600 text-sm">
+            数据查询中...
+          </div>
+        ) : (
+          <>
+            <div className="bg-white rounded-xl border border-slate-200 shadow p-4">
+              <ReactECharts
+                style={{ height: 340 }}
+                option={buildLineOption("股东交易量 Top 10", qtyXAxis, qtyYAxis)}
+              />
+            </div>
+            <div className="bg-white rounded-xl border border-slate-200 shadow p-4">
+              <ReactECharts
+                style={{ height: 340 }}
+                option={buildLineOption("股票交易金额 Top 10", securityXAxis, securityYAxis)}
+              />
+            </div>
+            <div className="bg-white rounded-xl border border-slate-200 shadow p-4">
+              <ReactECharts
+                style={{ height: 340 }}
+                option={buildLineOption(
+                  "股东交易金额 Top 10",
+                  shareholderXAxis,
+                  shareholderYAxis,
+                  false
+                )}
+              />
+            </div>
+          </>
+        )}
       </section>
     </div>
   );

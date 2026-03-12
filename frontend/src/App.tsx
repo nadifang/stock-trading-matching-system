@@ -339,6 +339,10 @@ export default function App() {
   });
   const [publishingQuotation, setPublishingQuotation] = useState(false);
   const [quotationMessage, setQuotationMessage] = useState<string | null>(null);
+  const [depthLoading, setDepthLoading] = useState(false);
+  const [depthError, setDepthError] = useState<string | null>(null);
+  const [depthBuyOrders, setDepthBuyOrders] = useState<Order[]>([]);
+  const [depthSellOrders, setDepthSellOrders] = useState<Order[]>([]);
   const [userInfoRows, setUserInfoRows] = useState<ShareholderInfoItem[]>([]);
   const [loadingUserInfo, setLoadingUserInfo] = useState(false);
   const [userInfoMessage, setUserInfoMessage] = useState<string | null>(null);
@@ -1135,6 +1139,68 @@ export default function App() {
   const openAnalysisPage = useCallback(() => {
     setPageMode("analysis");
   }, []);
+
+  const loadOrderDepth = useCallback(async () => {
+    const securityId = quotationForm.securityId.trim();
+    if (!securityId) {
+      setDepthError(lang === "en" ? "Security ID is required" : "证券代码不能为空");
+      setDepthBuyOrders([]);
+      setDepthSellOrders([]);
+      return;
+    }
+
+    setDepthLoading(true);
+    setDepthError(null);
+    try {
+      const params = new URLSearchParams();
+      params.set("securityId", securityId);
+      params.set("page", "1");
+      params.set("current", "1");
+      params.set("pageSize", "50");
+      params.set("size", "50");
+
+      const resp = await fetch(`${QUERY_BASE}/list?${params.toString()}`, {
+        method: "GET",
+        headers: buildAuthHeaders(),
+        credentials: "include",
+      });
+
+      if (!resp.ok) {
+        throw new Error(`${lang === "en" ? "Request failed" : "请求失败"}(${resp.status})`);
+      }
+
+      const raw = (await resp.json()) as unknown;
+      const payload = unwrapApiData<unknown>(raw);
+      const rows = Array.isArray(payload)
+        ? payload
+        : payload && typeof payload === "object" && "data" in payload
+          ? ((payload as { data?: unknown[] }).data ?? [])
+          : [];
+
+      const normalized = rows.map((item) => toOrder(item as Partial<Order> & Record<string, unknown>));
+      const buy = normalized
+        .filter((item) => item.side === "B")
+        .sort((a, b) => b.price - a.price)
+        .slice(0, 5);
+      const sell = normalized
+        .filter((item) => item.side === "S")
+        .sort((a, b) => a.price - b.price)
+        .slice(0, 5);
+
+      setDepthBuyOrders(buy);
+      setDepthSellOrders(sell);
+      if (buy.length === 0 && sell.length === 0) {
+        setDepthError(lang === "en" ? "No data." : "暂无数据。");
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : lang === "en" ? "Load failed" : "加载失败";
+      setDepthError(msg);
+      setDepthBuyOrders([]);
+      setDepthSellOrders([]);
+    } finally {
+      setDepthLoading(false);
+    }
+  }, [buildAuthHeaders, lang, quotationForm.securityId, toOrder, unwrapApiData]);
   const handlePublishQuotation = useCallback(async () => {
     if (!isAdmin) return;
     if (!quotationForm.securityId.trim()) {
@@ -1205,6 +1271,7 @@ export default function App() {
                   : "仅管理员可使用行情接入功能。"}
               </div>
             ) : (
+              <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="flex flex-col">
                   <label className="text-sm text-gray-600 mb-1">{lang === "en" ? "Market" : "市场"}</label>
@@ -1290,6 +1357,77 @@ export default function App() {
                   </div>
                 )}
               </div>
+              <div className="border border-slate-200 rounded-lg p-4 bg-slate-50">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-slate-700">
+                    {lang === "en" ? "Order Depth (Top 5 + Bottom 5)" : "盘口信息（最高5条 + 最低5条）"}
+                  </h3>
+                  <button
+                    type="button"
+                    className={`px-3 py-1.5 rounded text-sm ${
+                      depthLoading
+                        ? "bg-blue-300 text-white cursor-not-allowed"
+                        : "bg-blue-600 text-white hover:bg-blue-700"
+                    }`}
+                    onClick={() => void loadOrderDepth()}
+                    disabled={depthLoading}
+                  >
+                    {depthLoading
+                      ? lang === "en"
+                        ? "Loading..."
+                        : "加载中..."
+                      : lang === "en"
+                        ? "Load Depth"
+                        : "加载盘口"}
+                  </button>
+                </div>
+                {depthError && (
+                  <div className="text-sm text-red-600 mb-3">{depthError}</div>
+                )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                  <div className="bg-white rounded border border-slate-200 p-3">
+                    <div className="font-semibold text-red-600 mb-2">
+                      {lang === "en" ? "Top Buy (5)" : "买入最高5条"}
+                    </div>
+                    {depthBuyOrders.length === 0 ? (
+                      <div className="text-slate-500 text-xs">
+                        {lang === "en" ? "No data" : "暂无数据"}
+                      </div>
+                    ) : (
+                      <ul className="space-y-1">
+                        {depthBuyOrders.map((item) => (
+                          <li key={item.clOrderId} className="flex justify-between text-xs">
+                            <span className="text-slate-600">{item.securityId}</span>
+                            <span className="text-red-600 font-semibold">{item.price.toFixed(2)}</span>
+                            <span className="text-slate-500">Qty {item.qty}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <div className="bg-white rounded border border-slate-200 p-3">
+                    <div className="font-semibold text-green-600 mb-2">
+                      {lang === "en" ? "Top Sell (5)" : "卖出最低5条"}
+                    </div>
+                    {depthSellOrders.length === 0 ? (
+                      <div className="text-slate-500 text-xs">
+                        {lang === "en" ? "No data" : "暂无数据"}
+                      </div>
+                    ) : (
+                      <ul className="space-y-1">
+                        {depthSellOrders.map((item) => (
+                          <li key={item.clOrderId} className="flex justify-between text-xs">
+                            <span className="text-slate-600">{item.securityId}</span>
+                            <span className="text-green-600 font-semibold">{item.price.toFixed(2)}</span>
+                            <span className="text-slate-500">Qty {item.qty}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
             )}
           </div>
         </section>
@@ -1678,9 +1816,4 @@ export default function App() {
 
   return tradeView;
 }
-
-
-
-
-
 
