@@ -11,7 +11,7 @@ import com.stms.match.mapper.OrderMapper;
 import com.stms.match.mapper.TransactionMapper;
 import com.stms.quotation.domain.dto.quotationDTO;
 import com.stms.quotation.domain.vo.quotationVO;
-import com.stms.quotation.mapper.quotationMapper;
+import com.stms.match.mapper.quotationMapper;
 import com.stms.match.service.TradeSyncDatabaseService;
 import com.stms.match.utils.MatchingOrder;
 import org.springframework.stereotype.Service;

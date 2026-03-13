@@ -7,7 +7,7 @@ import com.stms.match.domain.dto.OrderDTO;
 import com.stms.common.domain.entity.quotation; // 导入quotation实体
 import com.stms.quotation.domain.dto.quotationDTO;
 import com.stms.quotation.domain.vo.quotationVO;
-import com.stms.quotation.mapper.quotationMapper; // 注入quotation Mapper
+import com.stms.match.mapper.quotationMapper; // 注入quotation Mapper
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
