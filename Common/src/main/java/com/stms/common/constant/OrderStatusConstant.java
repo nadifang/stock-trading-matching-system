@@ -10,5 +10,5 @@ public class OrderStatusConstant {
 
     public static final String ORDER_STATUS_REJECTED = "REJECTED";
 
-    public static final String ORDER_STATUS_MATCHED = "PARTIAL_FILLED";
+    public static final String ORDER_STATUS_MATCHED = "PARTIALLY_FILLED";
 }

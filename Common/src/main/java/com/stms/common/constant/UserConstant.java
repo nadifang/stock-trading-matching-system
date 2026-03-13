@@ -2,7 +2,7 @@ package com.stms.common.constant;
 
 public class UserConstant {
 
-    public static final String SHAREHOLDERID_FORMAT_ERROR = "手机格式错误";
+    public static final String SHAREHOLDERID_FORMAT_ERROR = "股东号格式错误";
 
     public static final String PASSWORD_FORMAT_ERROR = "密码格式错误";
 
